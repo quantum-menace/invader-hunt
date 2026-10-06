@@ -13,13 +13,26 @@ const Matcher = (() => {
   const MIN_SAT = 0.25, MIN_VAL = 0.2; // below this a pixel counts as grey (wall, grout)
   const MIN_CHROMA_SHARE = 0.02;      // fewer coloured pixels than this: colour says nothing
 
-  function loadImage(src) {
+  function loadOnce(src) {
     return new Promise((resolve, reject) => {
       const img = new Image();
       img.onload = () => resolve(img);
       img.onerror = () => reject(new Error('Could not load image ' + src));
       img.src = src;
     });
+  }
+
+  // Network images get a few retries, since mobile connections drop requests.
+  async function loadImage(src) {
+    const local = /^(data|blob):/.test(src);
+    for (let attempt = 0; ; attempt++) {
+      try {
+        return await loadOnce(attempt && !local ? src + (src.includes('?') ? '&' : '?') + 'retry=' + attempt : src);
+      } catch (e) {
+        if (local || attempt >= 2) throw e;
+        await new Promise((r) => setTimeout(r, 500 * (attempt + 1)));
+      }
+    }
   }
 
   // Centered square crop (zoom = fraction of the short side) scaled to size x size.
