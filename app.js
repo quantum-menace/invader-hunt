@@ -1,15 +1,17 @@
 'use strict';
 
 const STORE_KEY = 'invader-hunt.found.v1';
-const TEST_KEY = 'invader-hunt.testmode';
+const LOC_KEY = 'invader-hunt.location';   // 'real', 'any', or a city name
+const OLD_TEST_KEY = 'invader-hunt.testmode';
 const $ = (id) => document.getElementById(id);
 
 let data = null;          // contents of data.json
-let model = null;         // MobileNet feature extractor
-const refEmb = {};        // invader id -> array of reference embeddings
+let matcher = null;       // see match.js
+const refs = {};          // invader id -> array of reference fingerprints
 let found = loadFound();  // invader id -> { at, score, thumb }
-let lastFix = null;       // most recent GeolocationPosition
+let lastFix = null;       // most recent real GeolocationPosition
 let watchId = null;       // id of the running watchPosition
+let gpsState = { kind: '', text: 'Location is off', button: true }; // real GPS status
 
 // ---------- storage ----------
 function loadFound() {
@@ -18,8 +20,28 @@ function loadFound() {
 function saveFound() {
   try { localStorage.setItem(STORE_KEY, JSON.stringify(found)); } catch (e) { console.warn(e); }
 }
-function testMode() {
-  try { return localStorage.getItem(TEST_KEY) === '1'; } catch { return false; }
+
+// Where the app thinks you are: real GPS, a pretend city, or anywhere.
+function locMode() {
+  try {
+    const v = localStorage.getItem(LOC_KEY);
+    if (v) return v;
+    if (localStorage.getItem(OLD_TEST_KEY) === '1') return 'any';
+  } catch {}
+  return 'real';
+}
+function setLocMode(v) {
+  try { localStorage.setItem(LOC_KEY, v); localStorage.removeItem(OLD_TEST_KEY); } catch {}
+  paintGps();
+}
+
+// Pretend position: the middle of a city's invaders.
+function fakePosition(city) {
+  const invs = data.invaders.filter((i) => i.city === city);
+  if (!invs.length) return null;
+  const lat = invs.reduce((s, i) => s + i.lat, 0) / invs.length;
+  const lng = invs.reduce((s, i) => s + i.lng, 0) / invs.length;
+  return { coords: { latitude: lat, longitude: lng, accuracy: 5 }, timestamp: Date.now() };
 }
 
 // ---------- geo ----------
@@ -36,11 +58,27 @@ function distanceMeters(lat1, lng1, lat2, lng2) {
   const a = Math.sin(dLat / 2) ** 2 + Math.cos(lat1 * rad) * Math.cos(lat2 * rad) * Math.sin(dLng / 2) ** 2;
   return 2 * R * Math.asin(Math.sqrt(a));
 }
-function setGps(kind, text, showButton) {
-  const el = $('gps');
-  el.className = 'gps ' + kind;
+
+function setGps(kind, text, button) {
+  gpsState = { kind, text, button };
+  paintGps();
+}
+
+// The status bar shows the pretend location when one is set, otherwise real GPS.
+function paintGps() {
+  const mode = locMode();
+  const bar = $('gps');
+  if (mode !== 'real') {
+    bar.className = 'gps sim';
+    $('gps-text').textContent = mode === 'any' ? 'Test: location ignored' : `Test: pretending to be in ${mode}`;
+    $('gps-btn').hidden = true;
+    $('gps-help').hidden = true;
+    return;
+  }
+  const { kind, text, button } = gpsState;
+  bar.className = 'gps ' + kind;
   $('gps-text').textContent = text;
-  $('gps-btn').hidden = !showButton;
+  $('gps-btn').hidden = !button;
   $('gps-btn').textContent = kind === 'bad' ? 'Try again' : 'Enable location';
   $('gps-help').hidden = kind !== 'bad';
 }
@@ -87,7 +125,7 @@ function locationHelp() {
       ? ['Android', 'Settings › Location › on. Then Settings › Apps › Firefox › Permissions › Location › <i>Allow</i>. In Firefox tap the lock next to the address › Location › <i>Allow</i>']
       : ['Android', 'Settings › Location › on. Then in Chrome tap ⓘ next to the address › Permissions › Location › <i>Allow</i>'];
   }
-  return ['Computer', `Turn on location in your system settings (Windows: Settings › Privacy & security › Location). Then click the icon left of the address in ${browser} and <i>allow</i> location. At home you can also use Test mode under Tools.`];
+  return ['Computer', `Turn on location in your system settings (Windows: Settings › Privacy & security › Location). Then click the icon left of the address in ${browser} and <i>allow</i> location. For testing you can also pretend a location under Tools.`];
 }
 
 // Check location as soon as the page opens. If it is switched off on the
@@ -96,6 +134,7 @@ function setupLocation() {
   const [label, steps] = locationHelp();
   $('help-steps').innerHTML = `<b>${label}</b> ${steps}`;
   $('gps-btn').addEventListener('click', () => requestLocation().catch(() => {}));
+  paintGps();
   if (!navigator.geolocation) return setGps('bad', 'No location support in this browser', false);
 
   const check = () => requestLocation().catch(() => {});
@@ -111,53 +150,8 @@ function setupLocation() {
 
 function fmtDist(m) { return m < 1000 ? `${Math.round(m)} m` : `${(m / 1000).toFixed(1)} km`; }
 
-// ---------- images & embeddings ----------
-function loadImage(src) {
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    img.onload = () => resolve(img);
-    img.onerror = () => reject(new Error('Could not load image ' + src));
-    img.src = src;
-  });
-}
-
-// Draw a centered square crop (zoom = fraction of the short side) to a 224x224 canvas.
-function cropToCanvas(img, zoom = 1) {
-  const w = img.naturalWidth || img.width, h = img.naturalHeight || img.height;
-  const side = Math.min(w, h) * zoom;
-  const c = document.createElement('canvas');
-  c.width = c.height = 224;
-  c.getContext('2d').drawImage(img, (w - side) / 2, (h - side) / 2, side, side, 0, 0, 224, 224);
-  return c;
-}
-
-function embed(canvas) {
-  const t = tf.tidy(() => {
-    const v = model.infer(canvas, true).flatten();
-    return v.div(v.norm());
-  });
-  return t.data().finally(() => t.dispose()); // resolves to a unit-length Float32Array
-}
-
-function cosine(a, b) {
-  let s = 0;
-  for (let i = 0; i < a.length; i++) s += a[i] * b[i];
-  return s;
-}
-
-// Several crops of the photo, so a small invader in a wide shot still matches.
-async function embedPhoto(img) {
-  const out = [];
-  for (const z of [1, 0.7, 0.5]) out.push(await embed(cropToCanvas(img, z)));
-  return out;
-}
-
 function thumbnail(img) {
-  const c = cropToCanvas(img, 1);
-  const t = document.createElement('canvas');
-  t.width = t.height = 240;
-  t.getContext('2d').drawImage(c, 0, 0, 240, 240);
-  return t.toDataURL('image/jpeg', 0.7);
+  return Matcher.cropToCanvas(img, 1, 240).toDataURL('image/jpeg', 0.7);
 }
 
 // ---------- UI ----------
@@ -173,15 +167,18 @@ function el(tag, className, text) {
   return e;
 }
 
+function cityList() {
+  const cities = [...(data.cities || [])];
+  for (const inv of data.invaders) if (!cities.includes(inv.city)) cities.push(inv.city);
+  return cities;
+}
+
 // Collection grouped by city, in the order given by data.cities.
 function render() {
   const root = $('collection');
   root.innerHTML = '';
-  const cities = [...(data.cities || [])];
-  for (const inv of data.invaders) if (!cities.includes(inv.city)) cities.push(inv.city);
-
   let pts = 0, n = 0;
-  for (const city of cities) {
+  for (const city of cityList()) {
     const invs = data.invaders.filter((i) => i.city === city);
     if (!invs.length) continue;
     const got = invs.filter((i) => found[i.id]).length;
@@ -226,22 +223,31 @@ async function handlePhoto(file) {
   const url = URL.createObjectURL(file);
   showResult(url, '<strong>Analyzing…</strong><span class="small">Checking location and image</span>');
   try {
-    const img = await loadImage(url);
-    const test = testMode();
+    const img = await Matcher.loadImage(url);
+    const mode = locMode();
+    const threshold = data.similarityThreshold;
+    const colorWeight = data.colorWeight ?? 0.4;
+    const minMargin = data.minMargin ?? 0.05;
 
-    // Use the watched fix if it is recent, otherwise ask once more.
+    // 1. Where are we?
     let pos = null, gpsError = null;
-    if (lastFix && Date.now() - lastFix.timestamp < 60000) pos = lastFix;
-    else {
-      try { pos = await getPosition(); onFix(pos); } catch (e) { gpsError = e; pos = lastFix; }
+    if (mode === 'real') {
+      // Use the watched fix if it is recent, otherwise ask once more.
+      if (lastFix && Date.now() - lastFix.timestamp < 60000) pos = lastFix;
+      else {
+        try { pos = await getPosition(); onFix(pos); } catch (e) { gpsError = e; pos = lastFix; }
+      }
+    } else if (mode !== 'any') {
+      pos = fakePosition(mode);
     }
+    const modeTxt = mode === 'any' ? ' · location ignored' : mode !== 'real' ? ` · pretending ${esc(mode)}` : '';
 
-    // 1. Location filter
+    // 2. Keep only invaders near that position
     let candidates = data.invaders.map((inv) => ({
       inv,
       dist: pos ? distanceMeters(pos.coords.latitude, pos.coords.longitude, inv.lat, inv.lng) : null,
     }));
-    if (!test) {
+    if (mode !== 'any') {
       if (!pos) {
         return showResult(null, `<strong class="bad">Location needed</strong>
           <span class="small">Allow location access for this site and try again. (${esc(gpsError ? gpsError.message : 'unknown error')})</span>`);
@@ -251,26 +257,30 @@ async function handlePhoto(file) {
       if (!near.length) {
         const nearest = candidates.sort((a, b) => a.dist - b.dist)[0];
         return showResult(null, `<strong class="warn">No invader here</strong>
-          <span class="small">Nearest is ${esc(nearest.inv.name)}, about ${fmtDist(nearest.dist)} away.</span>`);
+          <span class="small">Nearest is ${esc(nearest.inv.name)}, about ${fmtDist(nearest.dist)} away${modeTxt}.</span>`);
       }
       candidates = near;
     }
 
-    // 2. Image match against the remaining candidates
-    const shots = await embedPhoto(img);
+    // 3. Compare the photo with the remaining candidates
+    const shots = await matcher.fingerprintPhoto(img);
     for (const c of candidates) {
-      c.score = -1;
-      for (const r of refEmb[c.inv.id]) for (const s of shots) c.score = Math.max(c.score, cosine(r, s));
+      c.m = matcher.score(shots, refs[c.inv.id], colorWeight);
+      c.score = c.m.score;
     }
     candidates.sort((a, b) => b.score - a.score);
-    const best = candidates[0];
-    const scoreTxt = `match score ${best.score.toFixed(2)}, needed ${data.similarityThreshold}`;
+    const [best, second] = candidates;
+    const scoreTxt = `score ${best.score.toFixed(2)} of ${threshold} needed; shape ${best.m.emb.toFixed(2)}, colour ${best.m.color.toFixed(2)}`;
     const distTxt = best.dist != null ? ` · ${fmtDist(best.dist)} away` : '';
-    const testTxt = test ? ' · test mode' : '';
 
-    if (best.score < data.similarityThreshold) {
+    if (best.score < threshold) {
       return showResult(null, `<strong class="bad">No match</strong>
-        <span class="small">Closest was ${esc(best.inv.name)} (${scoreTxt}${distTxt}${testTxt}). Try a straight-on shot that fills the frame.</span>`);
+        <span class="small">Closest was ${esc(best.inv.name)} (${scoreTxt}${distTxt}${modeTxt}). Try a straight-on shot that fills the frame.</span>`);
+    }
+    // Two candidates nearly tied: better to ask again than to credit the wrong one.
+    if (second && best.score - second.score < minMargin) {
+      return showResult(null, `<strong class="warn">Not sure which one</strong>
+        <span class="small">Could be ${esc(best.inv.name)} (${best.score.toFixed(2)}) or ${esc(second.inv.name)} (${second.score.toFixed(2)})${modeTxt}. Get closer and shoot straight on so the invader fills the frame.</span>`);
     }
     if (found[best.inv.id]) {
       return showResult(null, `<strong class="warn">Already flashed</strong>
@@ -282,11 +292,12 @@ async function handlePhoto(file) {
       thumb: thumbnail(img),
       lat: pos ? pos.coords.latitude : null,
       lng: pos ? pos.coords.longitude : null,
+      simulated: mode !== 'real',
     };
     saveFound();
     render();
     showResult(null, `<strong class="ok">Flashed! +${best.inv.points || 0} pts</strong>
-      <span class="small">${esc(best.inv.name)} (${scoreTxt}${distTxt}${testTxt})</span>`);
+      <span class="small">${esc(best.inv.name)} (${scoreTxt}${distTxt}${modeTxt})</span>`);
   } catch (e) {
     console.error(e);
     showResult(null, `<strong class="bad">Something went wrong</strong><span class="small">${esc(e.message)}</span>`);
@@ -295,12 +306,6 @@ async function handlePhoto(file) {
 
 // ---------- tools ----------
 function setupTools() {
-  const tm = $('testmode');
-  tm.checked = testMode();
-  tm.addEventListener('change', () => {
-    try { localStorage.setItem(TEST_KEY, tm.checked ? '1' : '0'); } catch {}
-  });
-
   let lastPos = '';
   $('getpos').addEventListener('click', async () => {
     const out = $('posout');
@@ -329,12 +334,27 @@ function setupTools() {
   });
 }
 
+// Fill the location picker once the city list is known.
+function setupLocationPicker() {
+  const sel = $('locmode');
+  sel.innerHTML = '';
+  sel.append(new Option('Real GPS', 'real'));
+  for (const city of cityList()) sel.append(new Option(`Pretend: ${city}`, city));
+  sel.append(new Option('Ignore location (all invaders)', 'any'));
+  const mode = locMode();
+  sel.value = [...sel.options].some((o) => o.value === mode) ? mode : 'real';
+  if (sel.value !== mode) setLocMode(sel.value);
+  sel.addEventListener('change', () => setLocMode(sel.value));
+  paintGps();
+}
+
 // Open with ?selftest to print how similar the reference images are to each other.
 function selfTest() {
   const ids = data.invaders.map((i) => i.id);
-  const lines = ['      ' + ids.map((i) => i.slice(-2).padStart(6)).join('')];
+  const w = data.colorWeight ?? 0.4;
+  const lines = ['        ' + ids.map((i) => i.padStart(7)).join('')];
   for (const a of ids) {
-    lines.push(a.slice(-2).padStart(6) + ids.map((b) => cosine(refEmb[a][0], refEmb[b][0]).toFixed(2).padStart(6)).join(''));
+    lines.push(a.padEnd(8) + ids.map((b) => matcher.score([refs[a][0]], refs[b], w).score.toFixed(2).padStart(7)).join(''));
   }
   const out = $('selftest');
   out.hidden = false;
@@ -350,12 +370,13 @@ async function init() {
   data = await (await fetch('data.json', { cache: 'no-cache' })).json();
   console.info('[ih] data loaded');
   render();
+  setupLocationPicker();
 
-  model = await mobilenet.load({ version: 2, alpha: 1.0, modelUrl: 'model/model.json', inputRange: [0, 1] });
+  matcher = await Matcher.create('model/model.json');
   console.info('[ih] model loaded, backend', tf.getBackend());
   for (const inv of data.invaders) {
-    refEmb[inv.id] = [];
-    for (const src of inv.refs) refEmb[inv.id].push(await embed(cropToCanvas(await loadImage(src), 1)));
+    refs[inv.id] = [];
+    for (const src of inv.refs) refs[inv.id].push(await matcher.fingerprintRef(await Matcher.loadImage(src)));
   }
 
   console.info('[ih] references ready');
@@ -367,7 +388,7 @@ async function init() {
   // iOS often drops the location prompt if it fires while the camera opens,
   // so location must be granted first, in its own tap.
   flash.addEventListener('click', (ev) => {
-    if (testMode() || lastFix) return;
+    if (locMode() !== 'real' || lastFix) return;
     ev.preventDefault();
     requestLocation().catch(() => {});
   });

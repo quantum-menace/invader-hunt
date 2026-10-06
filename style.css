@@ -48,6 +48,8 @@ button.danger { border-color: var(--accent); color: var(--accent); }
 .gps #gps-text { flex: 1; }
 .gps.ok::before { background: var(--ok); }
 .gps.busy::before, .gps.warn::before { background: var(--warn); }
+.gps.sim { border-color: var(--cyan); color: var(--cyan); }
+.gps.sim::before { background: var(--cyan); }
 .gps.bad { border-color: var(--accent); }
 .gps.bad::before { background: var(--accent); animation: blink 1s steps(1) infinite; }
 .gps-help { background: var(--panel); border: 2px solid var(--accent); border-top: 0; padding: 4px 12px; }
@@ -101,4 +103,8 @@ summary { cursor: pointer; font: 10px/1.6 var(--pixel); color: var(--muted); }
 .tool { margin: 14px 0; }
 .hint { color: var(--muted); font-size: 19px; margin: 6px 0 0; }
 pre { background: #000; border: 2px solid var(--line); padding: 10px; overflow-x: auto; font: 18px/1.2 var(--body); white-space: pre-wrap; }
+select {
+  font: 20px var(--body); color: var(--text); background: #000; border: 2px solid var(--line);
+  padding: 4px 6px; margin-left: 8px; max-width: 100%;
+}
 input[type="checkbox"] { width: 18px; height: 18px; accent-color: var(--accent); vertical-align: -3px; }

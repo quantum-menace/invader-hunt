@@ -46,8 +46,9 @@
   <details id="tools">
     <summary>Tools</summary>
     <div class="tool">
-      <label><input type="checkbox" id="testmode"> Test mode: ignore GPS</label>
-      <p class="hint">Use this to try the matching at home, for example by photographing the reference images on a screen.</p>
+      <label for="locmode">Location</label>
+      <select id="locmode"><option value="real">Real GPS</option></select>
+      <p class="hint">Pretend to be in a city to try flashing from home, for example by photographing the reference images on a screen. Test finds still count in your collection; reset them below.</p>
     </div>
     <div class="tool">
       <button id="getpos" type="button">Show my coordinates</button>
@@ -65,6 +66,7 @@
 
 <script src="vendor/tf.min.js"></script>
 <script src="vendor/mobilenet.min.js"></script>
+<script src="match.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

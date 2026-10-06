@@ -138,6 +138,28 @@ async function main() {
   for (let i = 0; i < 5; i++) negatives.push({ kind: 'other invader', shots: await m.fingerprintPhoto(await fakePhoto(strangerInvader())) });
   log(`${photos.length} photos + ${negatives.length} negatives fingerprinted\n`);
 
+  const quant = (arr, q) => { const s = [...arr].sort((a, b) => a - b); return s[Math.min(s.length - 1, Math.floor(q * s.length))]; };
+  log('colour | correct photo score    | wrong-invader score | same-city pair      | negatives max');
+  log('weight |  p05   p10   median    |  max   p90          | right  worst-margin |  wall  other');
+  for (const w of [0, 0.2, 0.3, 0.4, 0.5]) {
+    const ok = [], wrong = [];
+    let cityRight = 0, cityWorst = 1;
+    for (const p of photos) {
+      const scored = data.invaders.map((inv) => ({ inv, s: m.score(p.shots, refs[inv.id], w).score }));
+      const truth = scored.find((x) => x.inv.id === p.truth).s;
+      ok.push(truth);
+      for (const x of scored) if (x.inv.id !== p.truth) wrong.push(x.s);
+      const cityWrong = scored.filter((x) => x.inv.city === p.city && x.inv.id !== p.truth);
+      const cm = cityWrong.length ? truth - Math.max(...cityWrong.map((x) => x.s)) : 1;
+      if (cm > 0) cityRight++;
+      cityWorst = Math.min(cityWorst, cm);
+    }
+    const neg = { wall: -1, 'other invader': -1 };
+    for (const n of negatives) for (const inv of data.invaders) neg[n.kind] = Math.max(neg[n.kind], m.score(n.shots, refs[inv.id], w).score);
+    log(`  ${w.toFixed(1)}  | ${f2(quant(ok, 0.05))}${f2(quant(ok, 0.1))}${f2(quant(ok, 0.5))}    | ${f2(Math.max(...wrong))}${f2(quant(wrong, 0.9))}         | ${pct(cityRight / photos.length)}  ${f2(cityWorst)}       | ${f2(neg.wall)} ${f2(neg['other invader'])}`);
+  }
+  log('');
+
   log('colour | all 5 invaders          | same-city pair only (what GPS leaves) | negatives');
   log('weight | right  min-ok  margin   | right  margin  worst-margin           | max score');
   for (const w of [0, 0.2, 0.3, 0.4, 0.5, 0.6]) {

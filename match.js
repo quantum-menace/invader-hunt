@@ -9,7 +9,9 @@
 const Matcher = (() => {
   const SIZE = 224;
   const ZOOMS = [1, 0.7, 0.5];        // crops tried for each photo
-  const HUE_BINS = 12, SAT_BINS = 3;  // colour histogram layout
+  // Hue only: in tests, splitting by saturation made matches fragile under
+  // different lighting, while hue alone separated the invaders much better.
+  const HUE_BINS = 12, SAT_BINS = 1;
   const MIN_SAT = 0.25, MIN_VAL = 0.2; // below this a pixel counts as grey (wall, grout)
   const MIN_CHROMA_SHARE = 0.02;      // fewer coloured pixels than this: colour says nothing
 

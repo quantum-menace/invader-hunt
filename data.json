@@ -1,6 +1,6 @@
 {
   "radiusMeters": 10000,
-  "similarityThreshold": 0.65,
+  "similarityThreshold": 0.6,
   "colorWeight": 0.4,
   "minMargin": 0.05,
   "cities": ["Munich", "Zürich", "Berlin"],
