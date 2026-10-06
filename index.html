@@ -19,7 +19,17 @@
 </header>
 
 <main>
-  <label id="flash" class="flash disabled" for="camera">
+  <div id="gps" class="gps">
+    <span id="gps-text">Location is off</span>
+    <button id="gps-btn" type="button">Enable location</button>
+  </div>
+  <div id="gps-help" class="hint gps-help" hidden>
+    <p><strong>iPhone:</strong> open Settings › Privacy &amp; Security › Location Services. Make sure Location Services is on, then tap <em>Safari Websites</em> and choose <em>While Using the App</em> and turn on <em>Precise Location</em>.</p>
+    <p>Then in Safari tap the <em>aA</em> button in the address bar › Website Settings › Location › <em>Allow</em>, and reload this page.</p>
+    <p><strong>Android:</strong> tap the icon left of the address bar › Permissions › Location › Allow, and make sure location is on in the quick settings.</p>
+  </div>
+
+  <label id="flash"class="flash disabled" for="camera">
     <span class="flash-icon">◉</span>
     <span id="flash-text">Loading recognizer…</span>
   </label>

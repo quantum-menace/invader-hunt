@@ -8,7 +8,8 @@ let data = null;          // contents of data.json
 let model = null;         // MobileNet feature extractor
 const refEmb = {};        // invader id -> array of reference embeddings
 let found = loadFound();  // invader id -> { at, score, thumb }
-let gpsPromise = null;    // started when the user taps the button
+let lastFix = null;       // most recent GeolocationPosition
+let watchId = null;       // id of the running watchPosition
 
 // ---------- storage ----------
 function loadFound() {
@@ -35,6 +36,53 @@ function distanceMeters(lat1, lng1, lat2, lng2) {
   const a = Math.sin(dLat / 2) ** 2 + Math.cos(lat1 * rad) * Math.cos(lat2 * rad) * Math.sin(dLng / 2) ** 2;
   return 2 * R * Math.asin(Math.sqrt(a));
 }
+function setGps(kind, text, showButton) {
+  const el = $('gps');
+  el.className = 'gps ' + kind;
+  $('gps-text').textContent = text;
+  $('gps-btn').hidden = !showButton;
+  $('gps-help').hidden = kind !== 'bad';
+}
+
+function gpsFailed(e) {
+  if (e && e.code === 1) setGps('bad', 'Location is blocked', true);
+  else if (lastFix) return; // keep the last good fix on a transient error
+  else if (e && e.code === 3) setGps('warn', 'No GPS fix yet', true);
+  else setGps('warn', 'Location unavailable: ' + (e ? e.message : 'unknown'), true);
+}
+
+function onFix(p) {
+  lastFix = p;
+  setGps('ok', `Location on · ±${Math.round(p.coords.accuracy)} m`, false);
+}
+
+function startWatch() {
+  if (watchId != null || !navigator.geolocation) return;
+  watchId = navigator.geolocation.watchPosition(onFix, gpsFailed,
+    { enableHighAccuracy: true, timeout: 30000, maximumAge: 10000 });
+}
+
+// Must be called from a tap so iOS shows the permission prompt.
+function requestLocation() {
+  setGps('busy', 'Getting location…', false);
+  return getPosition().then((p) => { onFix(p); startWatch(); return p; },
+    (e) => { gpsFailed(e); throw e; });
+}
+
+function setupLocation() {
+  $('gps-btn').addEventListener('click', () => requestLocation().catch(() => {}));
+  if (!navigator.geolocation) return setGps('bad', 'This browser has no location support', false);
+  // If permission was granted before, start right away without a tap.
+  if (navigator.permissions && navigator.permissions.query) {
+    navigator.permissions.query({ name: 'geolocation' })
+      .then((s) => {
+        if (s.state === 'granted') requestLocation().catch(() => {});
+        else if (s.state === 'denied') setGps('bad', 'Location is blocked', true);
+      })
+      .catch(() => {});
+  }
+}
+
 function fmtDist(m) { return m < 1000 ? `${Math.round(m)} m` : `${(m / 1000).toFixed(1)} km`; }
 
 // ---------- images & embeddings ----------
@@ -135,8 +183,12 @@ async function handlePhoto(file) {
     const img = await loadImage(url);
     const test = testMode();
 
+    // Use the watched fix if it is recent, otherwise ask once more.
     let pos = null, gpsError = null;
-    try { pos = await (gpsPromise || getPosition()); } catch (e) { gpsError = e; }
+    if (lastFix && Date.now() - lastFix.timestamp < 60000) pos = lastFix;
+    else {
+      try { pos = await getPosition(); onFix(pos); } catch (e) { gpsError = e; pos = lastFix; }
+    }
 
     // 1. Location filter
     let candidates = data.invaders.map((inv) => ({
@@ -192,8 +244,6 @@ async function handlePhoto(file) {
   } catch (e) {
     console.error(e);
     showResult(null, `<strong class="bad">Something went wrong</strong><span class="small">${esc(e.message)}</span>`);
-  } finally {
-    gpsPromise = null;
   }
 }
 
@@ -249,6 +299,7 @@ function selfTest() {
 // ---------- startup ----------
 async function init() {
   setupTools();
+  setupLocation();
   data = await (await fetch('data.json', { cache: 'no-cache' })).json();
   render();
 
@@ -263,11 +314,12 @@ async function init() {
   input.disabled = false;
   flash.classList.remove('disabled');
   $('flash-text').textContent = 'Flash an invader';
-  // Start the GPS fix as soon as the user taps, while the camera is open.
-  flash.addEventListener('click', () => {
-    if (testMode()) return;
-    gpsPromise = getPosition();
-    gpsPromise.catch(() => {});
+  // iOS often drops the location prompt if it fires while the camera opens,
+  // so location must be granted first, in its own tap.
+  flash.addEventListener('click', (ev) => {
+    if (testMode() || lastFix) return;
+    ev.preventDefault();
+    requestLocation().catch(() => {});
   });
   input.addEventListener('change', () => {
     const file = input.files && input.files[0];
