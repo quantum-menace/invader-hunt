@@ -91,7 +91,7 @@ function setupLocation() {
   if (!(navigator.permissions && navigator.permissions.query)) return check();
   navigator.permissions.query({ name: 'geolocation' })
     .then((s) => {
-      if (s.state === 'denied') setGps('bad', 'Location is blocked', true);
+      if (s.state === 'denied') setGps('bad', 'Location is off for this app', true);
       else check();
       s.onchange = () => { if (s.state !== 'denied') check(); };
     })
