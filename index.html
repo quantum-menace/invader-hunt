@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Invader Hunt</title>
-<meta name="theme-color" content="#14162b">
+<meta name="theme-color" content="#07080f">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <link rel="manifest" href="manifest.webmanifest">
@@ -23,14 +23,15 @@
     <span id="gps-text">Location is off</span>
     <button id="gps-btn" type="button">Enable location</button>
   </div>
-  <div id="gps-help" class="hint gps-help" hidden>
-    <p><strong>iPhone:</strong> open Settings › Privacy &amp; Security › Location Services. Make sure Location Services is on, then tap <em>Safari Websites</em> and choose <em>While Using the App</em> and turn on <em>Precise Location</em>.</p>
-    <p>Then in Safari tap the <em>aA</em> button in the address bar › Website Settings › Location › <em>Allow</em>, and reload this page.</p>
-    <p><strong>Android:</strong> tap the icon left of the address bar › Permissions › Location › Allow, and make sure location is on in the quick settings.</p>
+  <div id="gps-help" class="gps-help" hidden>
+    <p class="help-title">Turn on location in your settings:</p>
+    <p data-platform="ios"><b>iPhone</b> Settings › Privacy &amp; Security › Location Services › Safari Websites › <i>While Using the App</i></p>
+    <p data-platform="android"><b>Android</b> Settings › Location › on. Then in Chrome tap ⓘ next to the address › Permissions › Location › <i>Allow</i></p>
+    <p>Then come back and tap <i>Try again</i>.</p>
   </div>
 
-  <label id="flash"class="flash disabled" for="camera">
-    <span class="flash-icon">◉</span>
+  <label id="flash" class="flash disabled" for="camera">
+    <svg class="flash-icon" viewBox="0 0 11 8" width="66" height="48" shape-rendering="crispEdges" aria-hidden="true"><path fill="currentColor" d="M2 0h1v1H2zM8 0h1v1H8zM3 1h1v1H3zM7 1h1v1H7zM2 2h7v1H2zM1 3h2v1H1zM4 3h3v1H4zM8 3h2v1H8zM0 4h11v1H0zM0 5h1v1H0zM2 5h7v1H2zM10 5h1v1h-1zM0 6h1v1H0zM2 6h1v1H2zM8 6h1v1H8zM10 6h1v1h-1zM3 7h2v1H3zM6 7h2v1H6z"/></svg>
     <span id="flash-text">Loading recognizer…</span>
   </label>
   <input id="camera" type="file" accept="image/*" capture="environment" hidden disabled>
@@ -41,7 +42,7 @@
   </section>
 
   <h2>Collection</h2>
-  <div id="grid" class="grid"></div>
+  <div id="collection"></div>
 
   <details id="tools">
     <summary>Tools</summary>

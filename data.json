@@ -1,11 +1,12 @@
 {
   "radiusMeters": 100,
   "similarityThreshold": 0.65,
+  "cities": ["Munich", "Zürich", "Berlin"],
   "invaders": [
-    { "id": "inv-01", "name": "Invader 01 (placeholder)", "lat": 52.5200, "lng": 13.4050, "points": 10, "refs": ["refs/inv-01.svg"] },
-    { "id": "inv-02", "name": "Invader 02 (placeholder)", "lat": 52.5210, "lng": 13.4100, "points": 20, "refs": ["refs/inv-02.svg"] },
-    { "id": "inv-03", "name": "Invader 03 (placeholder)", "lat": 52.5180, "lng": 13.4000, "points": 30, "refs": ["refs/inv-03.svg"] },
-    { "id": "inv-04", "name": "Invader 04 (placeholder)", "lat": 52.5230, "lng": 13.4120, "points": 40, "refs": ["refs/inv-04.svg"] },
-    { "id": "inv-05", "name": "Invader 05 (placeholder)", "lat": 52.5160, "lng": 13.3980, "points": 50, "refs": ["refs/inv-05.svg"] }
+    { "id": "MUC_01", "name": "MUC_01", "city": "Munich", "lat": 48.137400, "lng": 11.575500, "points": 10, "refs": ["refs/inv-01.svg"] },
+    { "id": "MUC_02", "name": "MUC_02", "city": "Munich", "lat": 48.139100, "lng": 11.580200, "points": 20, "refs": ["refs/inv-02.svg"] },
+    { "id": "ZH_01",  "name": "ZH_01",  "city": "Zürich", "lat": 47.376900, "lng": 8.541700,  "points": 30, "refs": ["refs/inv-03.svg"] },
+    { "id": "ZH_02",  "name": "ZH_02",  "city": "Zürich", "lat": 47.371800, "lng": 8.538900,  "points": 40, "refs": ["refs/inv-04.svg"] },
+    { "id": "BRL_01", "name": "BRL_01", "city": "Berlin", "lat": 52.520000, "lng": 13.405000, "points": 50, "refs": ["refs/inv-05.svg"] }
   ]
 }

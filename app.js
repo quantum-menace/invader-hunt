@@ -41,11 +41,12 @@ function setGps(kind, text, showButton) {
   el.className = 'gps ' + kind;
   $('gps-text').textContent = text;
   $('gps-btn').hidden = !showButton;
+  $('gps-btn').textContent = kind === 'bad' ? 'Try again' : 'Enable location';
   $('gps-help').hidden = kind !== 'bad';
 }
 
 function gpsFailed(e) {
-  if (e && e.code === 1) setGps('bad', 'Location is blocked', true);
+  if (e && e.code === 1) setGps('bad', 'Location is off for this app', true);
   else if (lastFix) return; // keep the last good fix on a transient error
   else if (e && e.code === 3) setGps('warn', 'No GPS fix yet', true);
   else setGps('warn', 'Location unavailable: ' + (e ? e.message : 'unknown'), true);
@@ -69,18 +70,32 @@ function requestLocation() {
     (e) => { gpsFailed(e); throw e; });
 }
 
+function platform() {
+  const ua = navigator.userAgent;
+  if (/iPhone|iPad|iPod/.test(ua) || (/Macintosh/.test(ua) && 'ontouchend' in document)) return 'ios';
+  if (/Android/.test(ua)) return 'android';
+  return 'other';
+}
+
+// Check location as soon as the page opens. If it is switched off on the
+// device, iOS fails instantly without a prompt, and we show how to fix it.
 function setupLocation() {
-  $('gps-btn').addEventListener('click', () => requestLocation().catch(() => {}));
-  if (!navigator.geolocation) return setGps('bad', 'This browser has no location support', false);
-  // If permission was granted before, start right away without a tap.
-  if (navigator.permissions && navigator.permissions.query) {
-    navigator.permissions.query({ name: 'geolocation' })
-      .then((s) => {
-        if (s.state === 'granted') requestLocation().catch(() => {});
-        else if (s.state === 'denied') setGps('bad', 'Location is blocked', true);
-      })
-      .catch(() => {});
+  const p = platform();
+  for (const el of document.querySelectorAll('[data-platform]')) {
+    el.hidden = p !== 'other' && el.dataset.platform !== p;
   }
+  $('gps-btn').addEventListener('click', () => requestLocation().catch(() => {}));
+  if (!navigator.geolocation) return setGps('bad', 'No location support in this browser', false);
+
+  const check = () => requestLocation().catch(() => {});
+  if (!(navigator.permissions && navigator.permissions.query)) return check();
+  navigator.permissions.query({ name: 'geolocation' })
+    .then((s) => {
+      if (s.state === 'denied') setGps('bad', 'Location is blocked', true);
+      else check();
+      s.onchange = () => { if (s.state !== 'denied') check(); };
+    })
+    .catch(check);
 }
 
 function fmtDist(m) { return m < 1000 ? `${Math.round(m)} m` : `${(m / 1000).toFixed(1)} km`; }
@@ -140,33 +155,53 @@ function esc(s) {
   return String(s).replace(/[&<>"']/g, (c) => map[c]);
 }
 
+function el(tag, className, text) {
+  const e = document.createElement(tag);
+  if (className) e.className = className;
+  if (text != null) e.textContent = text;
+  return e;
+}
+
+// Collection grouped by city, in the order given by data.cities.
 function render() {
-  const grid = $('grid');
-  grid.innerHTML = '';
+  const root = $('collection');
+  root.innerHTML = '';
+  const cities = [...(data.cities || [])];
+  for (const inv of data.invaders) if (!cities.includes(inv.city)) cities.push(inv.city);
+
   let pts = 0, n = 0;
-  for (const inv of data.invaders) {
-    const f = found[inv.id];
-    if (f) { pts += inv.points || 0; n++; }
-    const card = document.createElement('div');
-    card.className = 'card' + (f ? '' : ' locked');
-    const img = document.createElement('img');
-    img.src = f ? f.thumb : inv.refs[0];
-    img.alt = inv.name;
-    const meta = document.createElement('div');
-    meta.className = 'meta';
-    const name = document.createElement('div');
-    name.className = 'name';
-    name.textContent = inv.name;
-    const sub = document.createElement('div');
-    sub.className = 'sub';
-    sub.textContent = f
-      ? `Flashed ${new Date(f.at).toLocaleDateString()} · ${inv.points || 0} pts`
-      : 'Not found yet';
-    meta.append(name, sub);
-    card.append(img, meta);
-    grid.append(card);
+  for (const city of cities) {
+    const invs = data.invaders.filter((i) => i.city === city);
+    if (!invs.length) continue;
+    const got = invs.filter((i) => found[i.id]).length;
+    const section = el('section', 'city' + (got === invs.length ? ' complete' : ''));
+    const head = el('div', 'city-head');
+    head.append(el('h3', null, city), el('span', 'count', `${got}/${invs.length}`));
+    const grid = el('div', 'grid');
+    section.append(head, grid);
+    root.append(section);
+
+    for (const inv of invs) {
+      const f = found[inv.id];
+      if (f) { pts += inv.points || 0; n++; }
+      grid.append(card(inv, f));
+    }
   }
   $('score').textContent = `${pts} pts · ${n}/${data.invaders.length}`;
+}
+
+function card(inv, f) {
+  const c = el('div', 'card' + (f ? '' : ' locked'));
+  const img = el('img');
+  img.src = f ? f.thumb : inv.refs[0];
+  img.alt = inv.name;
+  const meta = el('div', 'meta');
+  meta.append(
+    el('div', 'name', inv.name),
+    el('div', 'sub', f ? `${new Date(f.at).toLocaleDateString()} · ${inv.points || 0} pts` : `${inv.points || 0} pts`),
+  );
+  c.append(img, meta);
+  return c;
 }
 
 function showResult(previewUrl, html) {
