@@ -252,7 +252,7 @@ async function init() {
   data = await (await fetch('data.json', { cache: 'no-cache' })).json();
   render();
 
-  model = await mobilenet.load({ version: 2, alpha: 1.0 });
+  model = await mobilenet.load({ version: 2, alpha: 1.0, modelUrl: 'model/model.json', inputRange: [0, 1] });
   for (const inv of data.invaders) {
     refEmb[inv.id] = [];
     for (const src of inv.refs) refEmb[inv.id].push(await embed(cropToCanvas(await loadImage(src), 1)));
