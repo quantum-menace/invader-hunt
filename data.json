@@ -1,0 +1,11 @@
+{
+  "radiusMeters": 100,
+  "similarityThreshold": 0.65,
+  "invaders": [
+    { "id": "inv-01", "name": "Invader 01 (placeholder)", "lat": 52.5200, "lng": 13.4050, "points": 10, "refs": ["refs/inv-01.svg"] },
+    { "id": "inv-02", "name": "Invader 02 (placeholder)", "lat": 52.5210, "lng": 13.4100, "points": 20, "refs": ["refs/inv-02.svg"] },
+    { "id": "inv-03", "name": "Invader 03 (placeholder)", "lat": 52.5180, "lng": 13.4000, "points": 30, "refs": ["refs/inv-03.svg"] },
+    { "id": "inv-04", "name": "Invader 04 (placeholder)", "lat": 52.5230, "lng": 13.4120, "points": 40, "refs": ["refs/inv-04.svg"] },
+    { "id": "inv-05", "name": "Invader 05 (placeholder)", "lat": 52.5160, "lng": 13.3980, "points": 50, "refs": ["refs/inv-05.svg"] }
+  ]
+}

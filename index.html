@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Invader Hunt</title>
+<meta name="theme-color" content="#14162b">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header>
+  <h1>Invader Hunt</h1>
+  <div id="score">0 pts · 0/5</div>
+</header>
+
+<main>
+  <label id="flash" class="flash disabled" for="camera">
+    <span class="flash-icon">◉</span>
+    <span id="flash-text">Loading recognizer…</span>
+  </label>
+  <input id="camera" type="file" accept="image/*" capture="environment" hidden disabled>
+
+  <section id="result" hidden>
+    <img id="preview" alt="Your photo">
+    <div id="result-text"></div>
+  </section>
+
+  <h2>Collection</h2>
+  <div id="grid" class="grid"></div>
+
+  <details id="tools">
+    <summary>Tools</summary>
+    <div class="tool">
+      <label><input type="checkbox" id="testmode"> Test mode: ignore GPS</label>
+      <p class="hint">Use this to try the matching at home, for example by photographing the reference images on a screen.</p>
+    </div>
+    <div class="tool">
+      <button id="getpos" type="button">Show my coordinates</button>
+      <pre id="posout" hidden></pre>
+      <button id="copypos" type="button" hidden>Copy</button>
+      <p class="hint">Stand in front of an invader and use this to record its location for the database.</p>
+    </div>
+    <div class="tool">
+      <button id="reset" type="button" class="danger">Reset my progress</button>
+      <span id="reset-confirm" hidden> Sure? <button id="reset-yes" type="button" class="danger">Yes, reset</button></span>
+    </div>
+    <pre id="selftest" hidden></pre>
+  </details>
+</main>
+
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.22.0/dist/tf.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/mobilenet@2.1.1/dist/mobilenet.min.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
