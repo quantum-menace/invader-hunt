@@ -49,7 +49,9 @@ function gpsFailed(e) {
   if (e && e.code === 1) setGps('bad', 'Location is off for this app', true);
   else if (lastFix) return; // keep the last good fix on a transient error
   else if (e && e.code === 3) setGps('warn', 'No GPS fix yet', true);
-  else setGps('warn', 'Location unavailable: ' + (e ? e.message : 'unknown'), true);
+  // Code 2 usually means location is switched off for the whole device
+  // (Firefox reports it this way instead of as a permission error).
+  else setGps('bad', 'Location is off on this device', true);
 }
 
 function onFix(p) {
@@ -70,20 +72,29 @@ function requestLocation() {
     (e) => { gpsFailed(e); throw e; });
 }
 
-function platform() {
+// Short "where to turn location on" steps for this device and browser.
+function locationHelp() {
   const ua = navigator.userAgent;
-  if (/iPhone|iPad|iPod/.test(ua) || (/Macintosh/.test(ua) && 'ontouchend' in document)) return 'ios';
-  if (/Android/.test(ua)) return 'android';
-  return 'other';
+  const ios = /iPhone|iPad|iPod/.test(ua) || (/Macintosh/.test(ua) && 'ontouchend' in document);
+  const firefox = /Firefox|FxiOS/.test(ua);
+  const browser = firefox ? 'Firefox' : /CriOS|Chrome/.test(ua) && !/Edg/.test(ua) ? 'Chrome' : /Edg/.test(ua) ? 'Edge' : 'Safari';
+  if (ios) {
+    const app = browser === 'Safari' ? 'Safari Websites' : browser;
+    return ['iPhone', `Settings › Privacy & Security › Location Services › ${app} › <i>While Using the App</i>`];
+  }
+  if (/Android/.test(ua)) {
+    return firefox
+      ? ['Android', 'Settings › Location › on. Then Settings › Apps › Firefox › Permissions › Location › <i>Allow</i>. In Firefox tap the lock next to the address › Location › <i>Allow</i>']
+      : ['Android', 'Settings › Location › on. Then in Chrome tap ⓘ next to the address › Permissions › Location › <i>Allow</i>'];
+  }
+  return ['Computer', `Turn on location in your system settings (Windows: Settings › Privacy & security › Location). Then click the icon left of the address in ${browser} and <i>allow</i> location. At home you can also use Test mode under Tools.`];
 }
 
 // Check location as soon as the page opens. If it is switched off on the
 // device, iOS fails instantly without a prompt, and we show how to fix it.
 function setupLocation() {
-  const p = platform();
-  for (const el of document.querySelectorAll('[data-platform]')) {
-    el.hidden = p !== 'other' && el.dataset.platform !== p;
-  }
+  const [label, steps] = locationHelp();
+  $('help-steps').innerHTML = `<b>${label}</b> ${steps}`;
   $('gps-btn').addEventListener('click', () => requestLocation().catch(() => {}));
   if (!navigator.geolocation) return setGps('bad', 'No location support in this browser', false);
 
