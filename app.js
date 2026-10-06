@@ -328,6 +328,7 @@ function selfTest() {
   const out = $('selftest');
   out.hidden = false;
   out.textContent = 'SELFTEST OK\n' + lines.join('\n');
+  console.info(out.textContent);
   $('tools').open = true;
 }
 
@@ -336,14 +337,17 @@ async function init() {
   setupTools();
   setupLocation();
   data = await (await fetch('data.json', { cache: 'no-cache' })).json();
+  console.info('[ih] data loaded');
   render();
 
   model = await mobilenet.load({ version: 2, alpha: 1.0, modelUrl: 'model/model.json', inputRange: [0, 1] });
+  console.info('[ih] model loaded, backend', tf.getBackend());
   for (const inv of data.invaders) {
     refEmb[inv.id] = [];
     for (const src of inv.refs) refEmb[inv.id].push(await embed(cropToCanvas(await loadImage(src), 1)));
   }
 
+  console.info('[ih] references ready');
   const input = $('camera');
   const flash = $('flash');
   input.disabled = false;
@@ -365,8 +369,18 @@ async function init() {
   if (new URLSearchParams(location.search).has('selftest')) selfTest();
 }
 
+// Show unexpected errors on the page, since phones have no visible console.
+function showFatal(msg) {
+  console.error('[ih] error', msg);
+  $('selftest').hidden = false;
+  $('selftest').textContent = 'ERROR ' + msg;
+  $('tools').open = true;
+}
+window.addEventListener('error', (e) => showFatal(e.message + ' @ ' + e.filename + ':' + e.lineno));
+window.addEventListener('unhandledrejection', (e) => showFatal(String(e.reason && (e.reason.stack || e.reason.message) || e.reason)));
+
 init().catch((e) => {
-  console.error(e);
+  console.error('[ih] init failed', e && (e.stack || e.message), e);
   $('flash-text').textContent = 'Failed to load: ' + e.message;
   $('selftest').hidden = false;
   $('selftest').textContent = 'SELFTEST FAIL ' + e.message;
