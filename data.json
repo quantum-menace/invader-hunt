@@ -1,6 +1,8 @@
 {
   "radiusMeters": 10000,
   "similarityThreshold": 0.65,
+  "colorWeight": 0.4,
+  "minMargin": 0.05,
   "cities": ["Munich", "Zürich", "Berlin"],
   "invaders": [
     { "id": "MUC_01", "name": "MUC_01", "city": "Munich", "lat": 48.137400, "lng": 11.575500, "points": 10, "refs": ["refs/inv-01.svg"] },

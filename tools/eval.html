@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Invader Hunt · match test</title>
+<style>
+  body { background: #07080f; color: #f2f0ff; font: 14px/1.4 ui-monospace, monospace; padding: 16px; }
+  pre { white-space: pre-wrap; }
+  #samples canvas { width: 120px; height: 90px; margin: 2px; }
+</style>
+</head>
+<body>
+<h1>Match test</h1>
+<p>Builds fake photos from every reference image (random wall, angle, distance, lighting, blur, JPEG) and checks how often each setting picks the right invader. Add <code>?n=12</code> to change photos per invader.</p>
+<pre id="out">running…</pre>
+<div id="samples"></div>
+<script src="../vendor/tf.min.js"></script>
+<script src="../vendor/mobilenet.min.js"></script>
+<script src="../match.js"></script>
+<script>
+'use strict';
+const out = document.getElementById('out');
+const log = (s) => { out.textContent += '\n' + s; console.info(s); };
+
+// Small seeded random generator so runs are repeatable.
+function rng(seed) {
+  return () => {
+    seed |= 0; seed = (seed + 0x6D2B79F5) | 0;
+    let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+const rand = rng(1234);
+const between = (a, b) => a + (b - a) * rand();
+
+function wall(ctx, w, h) {
+  const hue = between(0, 360), sat = between(0, 15), light = between(65, 92);
+  const g = ctx.createLinearGradient(0, 0, w * between(0.3, 1), h);
+  g.addColorStop(0, `hsl(${hue} ${sat}% ${light}%)`);
+  g.addColorStop(1, `hsl(${hue} ${sat}% ${light - between(5, 20)}%)`);
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, w, h);
+}
+
+// One fake phone photo of `img` hanging on a wall.
+async function fakePhoto(img) {
+  const W = 800, H = 600;
+  const c = document.createElement('canvas');
+  c.width = W; c.height = H;
+  const ctx = c.getContext('2d');
+  wall(ctx, W, H);
+  const iw = img.naturalWidth || img.width, ih = img.naturalHeight || img.height;
+  const size = H * between(0.35, 0.85);
+  const s = size / Math.max(iw, ih);
+  ctx.save();
+  ctx.translate(W / 2 + between(-60, 60), H / 2 + between(-45, 45));
+  ctx.rotate(between(-12, 12) * Math.PI / 180);
+  ctx.transform(1, between(-0.12, 0.12), between(-0.12, 0.12), 1, 0, 0);
+  ctx.shadowColor = 'rgba(0,0,0,0.35)'; ctx.shadowBlur = 12;
+  ctx.drawImage(img, -iw * s / 2, -ih * s / 2, iw * s, ih * s);
+  ctx.restore();
+
+  // lighting: colour cast, brightness, contrast, saturation, blur
+  ctx.globalCompositeOperation = 'multiply';
+  const warm = rand() < 0.5;
+  ctx.fillStyle = warm ? `rgba(255, ${Math.round(between(190, 235))}, ${Math.round(between(140, 200))}, 1)`
+                       : `rgba(${Math.round(between(190, 230))}, ${Math.round(between(215, 240))}, 255, 1)`;
+  ctx.globalAlpha = between(0.1, 0.45);
+  ctx.fillRect(0, 0, W, H);
+  ctx.globalAlpha = 1;
+  ctx.globalCompositeOperation = 'source-over';
+
+  const f = document.createElement('canvas');
+  f.width = W; f.height = H;
+  const fctx = f.getContext('2d');
+  fctx.filter = `brightness(${between(0.6, 1.25)}) contrast(${between(0.8, 1.2)}) saturate(${between(0.6, 1.2)}) blur(${between(0, 1.8)}px)`;
+  fctx.drawImage(c, 0, 0);
+  return Matcher.loadImage(f.toDataURL('image/jpeg', between(0.5, 0.85)));
+}
+
+// A random symmetric 11x8 invader in a random colour: something that is not in the set.
+function strangerInvader() {
+  const c = document.createElement('canvas');
+  c.width = 520; c.height = 440;
+  const ctx = c.getContext('2d');
+  ctx.fillStyle = `hsl(${between(0, 360)} 30% 92%)`;
+  ctx.fillRect(0, 0, 520, 440);
+  ctx.fillStyle = `hsl(${between(0, 360)} 75% 50%)`;
+  const cell = 520 / 15;
+  for (let y = 0; y < 8; y++) for (let x = 0; x < 6; x++) {
+    if (rand() < 0.5) {
+      ctx.fillRect((2 + x) * cell, (2 + y) * cell, cell, cell);
+      ctx.fillRect((2 + 10 - x) * cell, (2 + y) * cell, cell, cell);
+    }
+  }
+  return c;
+}
+
+function wallOnly() {
+  const c = document.createElement('canvas');
+  c.width = 800; c.height = 600;
+  wall(c.getContext('2d'), 800, 600);
+  return c;
+}
+
+const pct = (x) => (100 * x).toFixed(0).padStart(4) + '%';
+const f2 = (x) => x.toFixed(2).padStart(6);
+
+async function main() {
+  const params = new URLSearchParams(location.search);
+  const N = +params.get('n') || 8;
+  const data = await (await fetch('../data.json', { cache: 'no-cache' })).json();
+  const m = await Matcher.create('../model/model.json');
+  log(`model ready (${tf.getBackend()}), ${N} fake photos per invader`);
+
+  const refs = {};
+  for (const inv of data.invaders) {
+    refs[inv.id] = [];
+    for (const src of inv.refs) refs[inv.id].push(await m.fingerprintRef(await Matcher.loadImage('../' + src)));
+  }
+
+  // Fingerprint all fake photos once; scoring with different weights is cheap.
+  const photos = [];
+  for (const inv of data.invaders) {
+    for (const src of inv.refs) {
+      const img = await Matcher.loadImage('../' + src);
+      for (let i = 0; i < N; i++) {
+        const p = await fakePhoto(img);
+        if (photos.length < 10) { const cv = Matcher.cropToCanvas(p, 1, 160); document.getElementById('samples').append(cv); }
+        photos.push({ truth: inv.id, city: inv.city, shots: await m.fingerprintPhoto(p) });
+      }
+    }
+  }
+  const negatives = [];
+  for (let i = 0; i < 5; i++) negatives.push({ kind: 'wall', shots: await m.fingerprintPhoto(wallOnly()) });
+  for (let i = 0; i < 5; i++) negatives.push({ kind: 'other invader', shots: await m.fingerprintPhoto(await fakePhoto(strangerInvader())) });
+  log(`${photos.length} photos + ${negatives.length} negatives fingerprinted\n`);
+
+  log('colour | all 5 invaders          | same-city pair only (what GPS leaves) | negatives');
+  log('weight | right  min-ok  margin   | right  margin  worst-margin           | max score');
+  for (const w of [0, 0.2, 0.3, 0.4, 0.5, 0.6]) {
+    let right = 0, cityRight = 0, minOk = 1, marginSum = 0, cityMarginSum = 0, cityWorst = 1;
+    for (const p of photos) {
+      const scored = data.invaders.map((inv) => ({ inv, s: m.score(p.shots, refs[inv.id], w).score }))
+        .sort((a, b) => b.s - a.s);
+      const truthScore = scored.find((x) => x.inv.id === p.truth).s;
+      const bestWrong = scored.find((x) => x.inv.id !== p.truth).s;
+      if (scored[0].inv.id === p.truth) right++;
+      minOk = Math.min(minOk, truthScore);
+      marginSum += truthScore - bestWrong;
+
+      const city = scored.filter((x) => x.inv.city === p.city);
+      const cityWrong = city.find((x) => x.inv.id !== p.truth);
+      const cm = cityWrong ? truthScore - cityWrong.s : 1;
+      if (cm > 0) cityRight++;
+      cityMarginSum += cm;
+      cityWorst = Math.min(cityWorst, cm);
+    }
+    let negMax = -1;
+    for (const n of negatives) for (const inv of data.invaders) negMax = Math.max(negMax, m.score(n.shots, refs[inv.id], w).score);
+    log(`  ${w.toFixed(1)}  | ${pct(right / photos.length)}  ${f2(minOk)}  ${f2(marginSum / photos.length)}  | ${pct(cityRight / photos.length)}  ${f2(cityMarginSum / photos.length)}  ${f2(cityWorst)}                 | ${f2(negMax)}`);
+  }
+  log('\nright = picked the correct invader. min-ok = lowest score of a correct photo (threshold must stay below it).');
+  log('margin = correct score minus best wrong score (bigger is safer). negatives should stay below the threshold.');
+  log(`current settings: threshold ${data.similarityThreshold}, colorWeight ${data.colorWeight}, minMargin ${data.minMargin}`);
+  log('EVAL DONE');
+}
+main().catch((e) => log('EVAL FAIL ' + (e.stack || e.message)));
+</script>
+</body>
+</html>
