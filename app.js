@@ -3,6 +3,7 @@
 const STORE_KEY = 'invader-hunt.found.v1';
 const LOC_KEY = 'invader-hunt.location';   // 'real', 'any', or a city name
 const OLD_TEST_KEY = 'invader-hunt.testmode';
+const PLAYER_KEY = 'invader-hunt.player';  // { id, display_name } when logged in
 const $ = (id) => document.getElementById(id);
 
 let data = null;          // contents of data.json
@@ -19,6 +20,101 @@ function loadFound() {
 }
 function saveFound() {
   try { localStorage.setItem(STORE_KEY, JSON.stringify(found)); } catch (e) { console.warn(e); }
+}
+function loadPlayer() {
+  try { return JSON.parse(localStorage.getItem(PLAYER_KEY)); } catch { return null; }
+}
+function savePlayer(p) {
+  try { p ? localStorage.setItem(PLAYER_KEY, JSON.stringify(p)) : localStorage.removeItem(PLAYER_KEY); } catch {}
+}
+let player = loadPlayer();
+
+// ---------- accounts & sync ----------
+// Finds are kept on the phone first and copied to Supabase when a player is
+// logged in, so a flash is never lost to a bad connection.
+async function syncFinds() {
+  if (!Cloud.enabled || !player) return;
+  for (const [id, f] of Object.entries(found)) {
+    if (f.synced || !data.invaders.some((i) => i.id === id)) continue;
+    try { await Cloud.saveFind(player.id, id, f); f.synced = true; } catch (e) { console.warn('[ih] sync failed', e); }
+  }
+  saveFound();
+}
+
+async function login(name) {
+  const p = await Cloud.join(name);
+  const remote = await Cloud.loadFinds(p.id);
+  // Keep finds made on this phone before logging in, then upload them.
+  for (const [id, f] of Object.entries(found)) if (!remote[id]) remote[id] = { ...f, synced: false };
+  found = remote;
+  player = p;
+  savePlayer(p);
+  saveFound();
+  await syncFinds();
+  render();
+  renderPlayer();
+  renderBoard();
+}
+
+function logout() {
+  player = null;
+  savePlayer(null);
+  found = {};
+  saveFound();
+  render();
+  renderPlayer();
+}
+
+function renderPlayer() {
+  if (!Cloud.enabled) return;
+  $('player-btn').hidden = !player;
+  if (player) $('player-btn').textContent = player.display_name + ' ✕';
+  $('login').hidden = !!player;
+}
+
+async function renderBoard() {
+  if (!Cloud.enabled) return;
+  try {
+    const rows = await Cloud.leaderboard();
+    const ol = $('board');
+    ol.innerHTML = '';
+    for (const r of rows) {
+      const li = el('li', player && r.id === player.id ? 'me' : '');
+      li.append(el('span', 'who', r.display_name), el('span', 'what', `${r.found} · ${r.points} pts`));
+      ol.append(li);
+    }
+    if (!rows.length) ol.append(el('li', 'empty', 'No players yet'));
+    $('board-wrap').hidden = false;
+  } catch (e) {
+    console.warn('[ih] leaderboard failed', e);
+  }
+}
+
+function setupAccounts() {
+  if (!Cloud.enabled) return;
+  renderPlayer();
+  $('player-btn').addEventListener('click', () => {
+    if (!$('player-btn').dataset.confirm) {
+      $('player-btn').dataset.confirm = '1';
+      $('player-btn').textContent = 'Log out?';
+      setTimeout(() => { delete $('player-btn').dataset.confirm; renderPlayer(); }, 3000);
+      return;
+    }
+    delete $('player-btn').dataset.confirm;
+    logout();
+  });
+  $('login-form').addEventListener('submit', async (ev) => {
+    ev.preventDefault();
+    const msg = $('login-msg');
+    msg.hidden = false;
+    msg.textContent = 'Logging in…';
+    try {
+      await login($('login-name').value);
+      msg.hidden = true;
+    } catch (e) {
+      msg.textContent = 'Could not log in: ' + e.message;
+    }
+  });
 }
 
 // Where the app thinks you are: real GPS, a pretend city, or anywhere.
@@ -201,7 +297,11 @@ function render() {
 function card(inv, f) {
   const c = el('div', 'card' + (f ? '' : ' locked'));
   const img = el('img');
-  img.src = f ? f.thumb : inv.refs[0];
+  const src = f && f.thumb ? f.thumb : inv.refs[0];
+  if (src) {
+    if (!/^(data|blob):/.test(src)) img.crossOrigin = 'anonymous';
+    img.src = src;
+  }
   img.alt = inv.name;
   const meta = el('div', 'meta');
   meta.append(
@@ -293,9 +393,11 @@ async function handlePhoto(file) {
       lat: pos ? pos.coords.latitude : null,
       lng: pos ? pos.coords.longitude : null,
       simulated: mode !== 'real',
+      synced: false,
     };
     saveFound();
     render();
+    syncFinds().then(renderBoard);
     showResult(null, `<strong class="ok">Flashed! +${best.inv.points || 0} pts</strong>
       <span class="small">${esc(best.inv.name)} (${scoreTxt}${distTxt}${modeTxt})</span>`);
   } catch (e) {
@@ -326,11 +428,15 @@ function setupTools() {
   });
 
   $('reset').addEventListener('click', () => { $('reset-confirm').hidden = false; });
-  $('reset-yes').addEventListener('click', () => {
+  $('reset-yes').addEventListener('click', async () => {
+    $('reset-confirm').hidden = true;
+    if (Cloud.enabled && player) {
+      try { await Cloud.deleteFinds(player.id); } catch (e) { return showFatal('Reset failed: ' + e.message); }
+    }
     found = {};
     saveFound();
     render();
-    $('reset-confirm').hidden = true;
+    renderBoard();
   });
 }
 
@@ -348,9 +454,163 @@ function setupLocationPicker() {
   paintGps();
 }
 
+// ---------- admin: invaders and reference photos ----------
+const NEW_INVADER = '__new__';
+
+// Shrink a camera photo to at most 1024 px for upload.
+async function shrinkPhoto(file) {
+  const img = await Matcher.loadImage(URL.createObjectURL(file));
+  const w = img.naturalWidth, h = img.naturalHeight, s = Math.min(1, 1024 / Math.max(w, h));
+  const c = document.createElement('canvas');
+  c.width = Math.round(w * s);
+  c.height = Math.round(h * s);
+  c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+  return new Promise((resolve) => c.toBlob(resolve, 'image/jpeg', 0.85));
+}
+
+// Admin actions always use the real GPS, never a pretend location.
+async function realPosition() {
+  if (lastFix && Date.now() - lastFix.timestamp < 30000) return lastFix;
+  return requestLocation();
+}
+
+function adminMsg(text) { $('admin-msg').textContent = text; }
+
+function fillAdminInvaders(selectId) {
+  const sel = $('admin-inv');
+  sel.innerHTML = '';
+  for (const city of cityList()) {
+    const group = document.createElement('optgroup');
+    group.label = city;
+    for (const inv of data.invaders.filter((i) => i.city === city)) {
+      group.append(new Option(`${inv.name} (${inv.refs.length} photo${inv.refs.length === 1 ? '' : 's'})`, inv.id));
+    }
+    sel.append(group);
+  }
+  sel.append(new Option('+ New invader…', NEW_INVADER));
+  if (selectId) sel.value = selectId;
+  $('city-list').innerHTML = '';
+  for (const city of cityList()) $('city-list').append(new Option(city));
+  showAdminInvader();
+}
+
+function showAdminInvader() {
+  const id = $('admin-inv').value;
+  const isNew = id === NEW_INVADER;
+  $('admin-new').hidden = !isNew;
+  $('admin-existing').hidden = isNew;
+  const strip = $('admin-refs');
+  strip.innerHTML = '';
+  const inv = data.invaders.find((i) => i.id === id);
+  if (!inv) return;
+  for (const src of inv.refs) {
+    const img = el('img');
+    if (!/^(data|blob):/.test(src)) img.crossOrigin = 'anonymous';
+    img.src = src;
+    img.alt = inv.name;
+    strip.append(img);
+  }
+}
+
+async function showAdminPanel() {
+  const session = await Cloud.adminSession();
+  const ok = session && (await Cloud.isAdmin().catch(() => false));
+  $('admin-login').hidden = !!ok;
+  $('admin-panel').hidden = !ok;
+  if (ok) {
+    $('admin-who').textContent = 'Logged in as ' + session.user.email;
+    fillAdminInvaders($('admin-inv').value);
+  }
+}
+
+function setupAdmin() {
+  if (!Cloud.enabled) return;
+  $('admin-tool').hidden = false;
+  showAdminPanel();
+
+  $('admin-login').addEventListener('submit', async (ev) => {
+    ev.preventDefault();
+    adminMsg('');
+    try {
+      await Cloud.adminSignIn($('admin-email').value.trim(), $('admin-pass').value);
+      $('admin-pass').value = '';
+      await showAdminPanel();
+    } catch (e) {
+      $('admin-panel').hidden = true;
+      $('admin-login').hidden = false;
+      adminMsg('');
+      showFatal('Admin login failed: ' + e.message);
+    }
+  });
+  $('admin-logout').addEventListener('click', async () => {
+    await Cloud.adminSignOut();
+    await showAdminPanel();
+  });
+  $('admin-inv').addEventListener('change', showAdminInvader);
+
+  $('new-create').addEventListener('click', async () => {
+    const name = $('new-name').value.trim().toUpperCase().replace(/\s+/g, '_');
+    const city = $('new-city').value.trim();
+    const points = Math.max(0, parseInt($('new-points').value, 10) || 0);
+    if (!/^[A-Z0-9_\-]{2,20}$/.test(name)) return adminMsg('Use 2 to 20 letters, digits or _ for the name.');
+    if (!city) return adminMsg('Enter a city.');
+    if (data.invaders.some((i) => i.id === name)) return adminMsg(name + ' already exists.');
+    try {
+      adminMsg('Getting your position…');
+      const p = await realPosition();
+      const inv = { id: name, name, city, lat: p.coords.latitude, lng: p.coords.longitude, points };
+      await Cloud.createInvader(inv);
+      data.invaders.push({ ...inv, refs: [] });
+      refs[name] = [];
+      render();
+      setupLocationPicker();
+      fillAdminInvaders(name);
+      adminMsg(`Created ${name} at ±${Math.round(p.coords.accuracy)} m. Now add reference photos.`);
+    } catch (e) {
+      adminMsg('Could not create it: ' + e.message);
+    }
+  });
+
+  $('admin-move').addEventListener('click', async () => {
+    const inv = data.invaders.find((i) => i.id === $('admin-inv').value);
+    if (!inv) return;
+    try {
+      adminMsg('Getting your position…');
+      const p = await realPosition();
+      await Cloud.moveInvader(inv.id, p.coords.latitude, p.coords.longitude);
+      inv.lat = p.coords.latitude;
+      inv.lng = p.coords.longitude;
+      adminMsg(`${inv.name} now sits at your position (±${Math.round(p.coords.accuracy)} m).`);
+    } catch (e) {
+      adminMsg('Could not move it: ' + e.message);
+    }
+  });
+
+  $('ref-camera').addEventListener('change', async () => {
+    const input = $('ref-camera');
+    const file = input.files && input.files[0];
+    input.value = '';
+    const inv = data.invaders.find((i) => i.id === $('admin-inv').value);
+    if (!file || !inv) return;
+    try {
+      adminMsg('Uploading…');
+      const blob = await shrinkPhoto(file);
+      const url = await Cloud.uploadRef(inv.id, blob);
+      inv.refs.push(url);
+      // Use the new photo for matching right away on this phone.
+      (refs[inv.id] = refs[inv.id] || []).push(await matcher.fingerprintRef(await Matcher.loadImage(URL.createObjectURL(blob))));
+      fillAdminInvaders(inv.id);
+      render();
+      adminMsg(`Saved. ${inv.name} now has ${inv.refs.length} reference photo${inv.refs.length === 1 ? '' : 's'}.`);
+    } catch (e) {
+      adminMsg('Upload failed: ' + e.message);
+    }
+  });
+}
+
 // Open with ?selftest to print how similar the reference images are to each other.
 function selfTest() {
-  const ids = data.invaders.map((i) => i.id);
+  const ids = data.invaders.filter((i) => refs[i.id] && refs[i.id].length).map((i) => i.id);
   const w = data.colorWeight ?? 0.4;
   const lines = ['        ' + ids.map((i) => i.padStart(7)).join('')];
   for (const a of ids) {
@@ -368,16 +628,45 @@ async function init() {
   setupTools();
   setupLocation();
   data = await (await fetch('data.json', { cache: 'no-cache' })).json();
+  // With Supabase set up, the invader list lives there; data.json keeps the
+  // settings and serves as a fallback when the database cannot be reached.
+  if (Cloud.enabled) {
+    try {
+      data.invaders = await Cloud.loadInvaders();
+    } catch (e) {
+      console.warn('[ih] using built-in invader list', e);
+    }
+    if (player) {
+      try {
+        const remote = await Cloud.loadFinds(player.id);
+        for (const [id, f] of Object.entries(found)) if (!f.synced) remote[id] = f;
+        found = remote;
+        saveFound();
+      } catch (e) {
+        console.warn('[ih] could not load finds', e);
+      }
+    }
+  }
   console.info('[ih] data loaded');
+  setupAccounts();
   render();
   setupLocationPicker();
+  renderBoard();
+  syncFinds();
 
   matcher = await Matcher.create('model/model.json');
   console.info('[ih] model loaded, backend', tf.getBackend());
   for (const inv of data.invaders) {
     refs[inv.id] = [];
-    for (const src of inv.refs) refs[inv.id].push(await matcher.fingerprintRef(await Matcher.loadImage(src)));
+    for (const src of inv.refs) {
+      try {
+        refs[inv.id].push(await matcher.fingerprintRef(await Matcher.loadImage(src)));
+      } catch (e) {
+        console.warn('[ih] skipped reference photo', src, e);
+      }
+    }
   }
+  setupAdmin();
 
   console.info('[ih] references ready');
   const input = $('camera');

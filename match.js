@@ -18,6 +18,9 @@ const Matcher = (() => {
   function loadOnce(src) {
     return new Promise((resolve, reject) => {
       const img = new Image();
+      // Photos from Supabase storage live on another domain; without this the
+      // canvas would be locked and the pixels unreadable.
+      if (!/^(data|blob):/.test(src)) img.crossOrigin = 'anonymous';
       img.onload = () => resolve(img);
       img.onerror = () => reject(new Error('Could not load image ' + src));
       img.src = src;

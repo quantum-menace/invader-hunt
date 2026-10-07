@@ -108,3 +108,40 @@ select {
   padding: 4px 6px; margin-left: 8px; max-width: 100%;
 }
 input[type="checkbox"] { width: 18px; height: 18px; accent-color: var(--accent); vertical-align: -3px; }
+
+/* accounts */
+.header-right { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.chip { font-size: 8px; padding: 6px 8px; border-color: var(--cyan); color: var(--cyan); box-shadow: 2px 2px 0 var(--line); }
+.panel { margin-top: 6px; padding: 10px 12px; background: var(--panel); border: 2px solid var(--cyan); }
+.panel p { margin: 0 0 10px; }
+.row { display: flex; gap: 8px; flex-wrap: wrap; }
+.row input { flex: 1; min-width: 0; }
+.stack { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
+.stack > input, .stack > button, .stack > .button-like { width: 100%; }
+input[type="text"], input:not([type]), input[type="email"], input[type="password"], input[type="number"] {
+  font: 20px var(--body); color: var(--text); background: #000; border: 2px solid var(--line); padding: 6px 8px;
+}
+input[type="number"] { width: 6em; }
+input:focus, select:focus { outline: 2px solid var(--cyan); outline-offset: 0; }
+.button-like {
+  display: block; text-align: center; font: 9px/1.4 var(--pixel); border: 2px solid var(--ok); color: var(--ok);
+  padding: 11px 10px; background: var(--panel); cursor: pointer; box-shadow: 3px 3px 0 var(--line);
+}
+.tool-title { font: 10px/1.4 var(--pixel); color: var(--warn); margin: 0 0 10px; }
+#admin-tool { border-top: 2px dashed var(--line); padding-top: 14px; }
+.ref-strip { display: flex; gap: 6px; flex-wrap: wrap; }
+.ref-strip img { width: 64px; height: 64px; object-fit: cover; border: 2px solid var(--line); }
+
+/* leaderboard */
+.board { list-style: none; counter-reset: rank; margin: 0; padding: 0; }
+.board li {
+  counter-increment: rank; display: flex; align-items: baseline; gap: 10px;
+  padding: 8px 10px; border-bottom: 2px dashed var(--line);
+}
+.board li::before { content: counter(rank); font: 10px var(--pixel); color: var(--muted); width: 2.2em; }
+.board li:nth-child(1)::before { color: var(--warn); }
+.board .who { flex: 1; }
+.board .what { color: var(--muted); }
+.board li.me { background: var(--panel); }
+.board li.me .who { color: var(--cyan); }
+.board li.empty::before { content: ""; }

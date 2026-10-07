@@ -1,0 +1,24 @@
+# Free Supabase projects pause after about a week without activity.
+# This makes one tiny database read every 3 days to keep the project awake.
+name: Keep Supabase awake
+
+on:
+  schedule:
+    - cron: "17 6 */3 * *"
+  workflow_dispatch:
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Read one invader
+        run: |
+          url=$(sed -n "s/.*supabaseUrl: *'\([^']*\)'.*/\1/p" config.js)
+          key=$(sed -n "s/.*supabaseKey: *'\([^']*\)'.*/\1/p" config.js)
+          if [ -z "$url" ] || [ -z "$key" ]; then
+            echo "Supabase is not configured in config.js yet; nothing to do."
+            exit 0
+          fi
+          curl -fsS "$url/rest/v1/invaders?select=id&limit=1" -H "apikey: $key"
+          echo

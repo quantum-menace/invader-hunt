@@ -15,10 +15,22 @@
 <body>
 <header>
   <h1>Invader Hunt</h1>
-  <div id="score">0 pts · 0/5</div>
+  <div class="header-right">
+    <div id="score">0 pts · 0/5</div>
+    <button id="player-btn" class="chip" type="button" hidden></button>
+  </div>
 </header>
 
 <main>
+  <section id="login" class="panel" hidden>
+    <p>Pick a name to save your finds and join the leaderboard. Use the same name on another phone to continue there.</p>
+    <form id="login-form" class="row">
+      <input id="login-name" maxlength="20" placeholder="Your name" autocomplete="nickname" autocapitalize="words">
+      <button type="submit">Play</button>
+    </form>
+    <p id="login-msg" class="hint" hidden></p>
+  </section>
+
   <div id="gps" class="gps">
     <span id="gps-text">Location is off</span>
     <button id="gps-btn" type="button">Enable location</button>
@@ -43,12 +55,17 @@
   <h2>Collection</h2>
   <div id="collection"></div>
 
+  <section id="board-wrap" hidden>
+    <h2>Leaderboard</h2>
+    <ol id="board" class="board"></ol>
+  </section>
+
   <details id="tools">
     <summary>Tools</summary>
     <div class="tool">
       <label for="locmode">Location</label>
       <select id="locmode"><option value="real">Real GPS</option></select>
-      <p class="hint">Pretend to be in a city to try flashing from home, for example by photographing the reference images on a screen. Test finds still count in your collection; reset them below.</p>
+      <p class="hint">Pretend to be in a city to try flashing from home, for example by photographing the reference images on a screen. Test finds show in your collection but not on the leaderboard.</p>
     </div>
     <div class="tool">
       <button id="getpos" type="button">Show my coordinates</button>
@@ -60,12 +77,44 @@
       <button id="reset" type="button" class="danger">Reset my progress</button>
       <span id="reset-confirm" hidden> Sure? <button id="reset-yes" type="button" class="danger">Yes, reset</button></span>
     </div>
+
+    <div class="tool" id="admin-tool" hidden>
+      <h3 class="tool-title">Admin</h3>
+      <form id="admin-login" class="stack">
+        <input id="admin-email" type="email" placeholder="Admin email" autocomplete="username">
+        <input id="admin-pass" type="password" placeholder="Password" autocomplete="current-password">
+        <button type="submit">Log in as admin</button>
+      </form>
+      <div id="admin-panel" class="stack" hidden>
+        <p id="admin-who" class="hint"></p>
+        <label>Invader <select id="admin-inv"></select></label>
+        <div id="admin-new" class="stack" hidden>
+          <input id="new-name" placeholder="Name, e.g. MUC_03" maxlength="20" autocapitalize="characters">
+          <input id="new-city" placeholder="City" list="city-list" maxlength="30">
+          <datalist id="city-list"></datalist>
+          <label>Points <input id="new-points" type="number" min="0" step="10" value="10"></label>
+          <button type="button" id="new-create">Create it here, at my GPS position</button>
+        </div>
+        <div id="admin-existing" class="stack">
+          <label class="button-like" for="ref-camera">Add reference photo</label>
+          <input id="ref-camera" type="file" accept="image/*" capture="environment" hidden>
+          <div id="admin-refs" class="ref-strip"></div>
+          <button type="button" id="admin-move">Move this invader to my GPS position</button>
+        </div>
+        <p id="admin-msg" class="hint"></p>
+        <button type="button" id="admin-logout">Log out admin</button>
+      </div>
+      <p class="hint">Admins add invaders and reference photos. Take 3 to 5 reference shots per invader from different angles and distances.</p>
+    </div>
     <pre id="selftest" hidden></pre>
   </details>
 </main>
 
 <script src="vendor/tf.min.js"></script>
 <script src="vendor/mobilenet.min.js"></script>
+<script src="vendor/supabase.js"></script>
+<script src="config.js"></script>
+<script src="cloud.js"></script>
 <script src="match.js"></script>
 <script src="app.js"></script>
 </body>
