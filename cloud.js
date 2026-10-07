@@ -81,10 +81,15 @@ const Cloud = (() => {
       return data.session;
     },
     async adminSignIn(email, password) {
-      await run(sb.auth.signInWithPassword({ email, password }));
+      if (!password) throw new Error('Enter the admin password.');
+      try {
+        await run(sb.auth.signInWithPassword({ email, password }));
+      } catch (e) {
+        throw new Error(/invalid login/i.test(e.message) ? 'Wrong admin password.' : e.message);
+      }
       if (!(await run(sb.rpc('is_admin')))) {
         await sb.auth.signOut();
-        throw new Error('This account is not an admin. Add its email to the admins table first.');
+        throw new Error(`The admin user is not in the admins table yet (${email}).`);
       }
     },
     async isAdmin() {

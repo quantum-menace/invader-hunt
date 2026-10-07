@@ -25,7 +25,8 @@
   <section id="login" class="panel" hidden>
     <p>Pick a name to save your finds and join the leaderboard. Use the same name on another phone to continue there.</p>
     <form id="login-form" class="row">
-      <input id="login-name" maxlength="20" placeholder="Your name" autocomplete="nickname" autocapitalize="words">
+      <input id="login-name" maxlength="20" placeholder="Your name" autocomplete="username" autocapitalize="words">
+      <input id="login-pass" type="password" placeholder="Admin password" autocomplete="current-password" hidden>
       <button type="submit">Play</button>
     </form>
     <p id="login-msg" class="hint" hidden></p>
@@ -80,12 +81,7 @@
 
     <div class="tool" id="admin-tool" hidden>
       <h3 class="tool-title">Admin</h3>
-      <form id="admin-login" class="stack">
-        <input id="admin-email" type="email" placeholder="Admin email" autocomplete="username">
-        <input id="admin-pass" type="password" placeholder="Password" autocomplete="current-password">
-        <button type="submit">Log in as admin</button>
-      </form>
-      <div id="admin-panel" class="stack" hidden>
+      <div id="admin-panel" class="stack">
         <p id="admin-who" class="hint"></p>
         <label>Invader <select id="admin-inv"></select></label>
         <div id="admin-new" class="stack" hidden>
@@ -102,9 +98,8 @@
           <button type="button" id="admin-move">Move this invader to my GPS position</button>
         </div>
         <p id="admin-msg" class="hint"></p>
-        <button type="button" id="admin-logout">Log out admin</button>
       </div>
-      <p class="hint">Admins add invaders and reference photos. Take 3 to 5 reference shots per invader from different angles and distances.</p>
+      <p class="hint">Add invaders and reference photos. Take 3 to 5 reference shots per invader from different angles and distances.</p>
     </div>
     <pre id="selftest" hidden></pre>
   </details>

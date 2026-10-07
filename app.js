@@ -41,7 +41,13 @@ async function syncFinds() {
   saveFound();
 }
 
-async function login(name) {
+const ADMIN_ID = 'admin';
+const isAdminName = (name) => name.trim().toLowerCase() === ADMIN_ID;
+
+async function login(name, password) {
+  // "admin" signs in to a Supabase user behind the scenes; the database
+  // checks that user before allowing edits to invaders and photos.
+  if (isAdminName(name)) await Cloud.adminSignIn((window.INVADER_CONFIG || {}).adminEmail, password);
   const p = await Cloud.join(name);
   const remote = await Cloud.loadFinds(p.id);
   // Keep finds made on this phone before logging in, then upload them.
@@ -54,15 +60,18 @@ async function login(name) {
   render();
   renderPlayer();
   renderBoard();
+  showAdminPanel();
 }
 
-function logout() {
+async function logout() {
+  if (player && player.id === ADMIN_ID) await Cloud.adminSignOut().catch(() => {});
   player = null;
   savePlayer(null);
   found = {};
   saveFound();
   render();
   renderPlayer();
+  showAdminPanel();
 }
 
 function renderPlayer() {
@@ -78,12 +87,12 @@ async function renderBoard() {
     const rows = await Cloud.leaderboard();
     const ol = $('board');
     ol.innerHTML = '';
-    for (const r of rows) {
+    for (const r of rows.filter((x) => x.id !== ADMIN_ID)) {
       const li = el('li', player && r.id === player.id ? 'me' : '');
       li.append(el('span', 'who', r.display_name), el('span', 'what', `${r.found} · ${r.points} pts`));
       ol.append(li);
     }
-    if (!rows.length) ol.append(el('li', 'empty', 'No players yet'));
+    if (!ol.children.length) ol.append(el('li', 'empty', 'No players yet'));
     $('board-wrap').hidden = false;
   } catch (e) {
     console.warn('[ih] leaderboard failed', e);
@@ -103,13 +112,26 @@ function setupAccounts() {
     delete $('player-btn').dataset.confirm;
     logout();
   });
+  // The password field only appears for the name "admin".
+  $('login-name').addEventListener('input', () => {
+    if (!isAdminName($('login-name').value)) $('login-pass').hidden = true;
+  });
   $('login-form').addEventListener('submit', async (ev) => {
     ev.preventDefault();
     const msg = $('login-msg');
+    const name = $('login-name').value;
     msg.hidden = false;
+    if (isAdminName(name) && $('login-pass').hidden) {
+      $('login-pass').hidden = false;
+      $('login-pass').focus();
+      msg.textContent = 'Enter the admin password.';
+      return;
+    }
     msg.textContent = 'Logging in…';
     try {
-      await login($('login-name').value);
+      await login(name, $('login-pass').value);
+      $('login-pass').value = '';
+      $('login-pass').hidden = true;
       msg.hidden = true;
     } catch (e) {
       msg.textContent = 'Could not log in: ' + e.message;
@@ -512,40 +534,22 @@ function showAdminInvader() {
   }
 }
 
+let adminReady = false; // set once the recognizer is loaded and the buttons work
+
+// The admin tools show only while logged in as "admin" with a valid Supabase sign-in.
 async function showAdminPanel() {
-  const session = await Cloud.adminSession();
-  const ok = session && (await Cloud.isAdmin().catch(() => false));
-  $('admin-login').hidden = !!ok;
-  $('admin-panel').hidden = !ok;
+  if (!Cloud.enabled || !adminReady) return;
+  const ok = !!(player && player.id === ADMIN_ID && (await Cloud.adminSession())
+    && (await Cloud.isAdmin().catch(() => false)));
+  $('admin-tool').hidden = !ok;
   if (ok) {
-    $('admin-who').textContent = 'Logged in as ' + session.user.email;
+    $('admin-who').textContent = 'Logged in as admin';
     fillAdminInvaders($('admin-inv').value);
   }
 }
 
 function setupAdmin() {
   if (!Cloud.enabled) return;
-  $('admin-tool').hidden = false;
-  showAdminPanel();
-
-  $('admin-login').addEventListener('submit', async (ev) => {
-    ev.preventDefault();
-    adminMsg('');
-    try {
-      await Cloud.adminSignIn($('admin-email').value.trim(), $('admin-pass').value);
-      $('admin-pass').value = '';
-      await showAdminPanel();
-    } catch (e) {
-      $('admin-panel').hidden = true;
-      $('admin-login').hidden = false;
-      adminMsg('');
-      showFatal('Admin login failed: ' + e.message);
-    }
-  });
-  $('admin-logout').addEventListener('click', async () => {
-    await Cloud.adminSignOut();
-    await showAdminPanel();
-  });
   $('admin-inv').addEventListener('change', showAdminInvader);
 
   $('new-create').addEventListener('click', async () => {
@@ -606,6 +610,9 @@ function setupAdmin() {
       adminMsg('Upload failed: ' + e.message);
     }
   });
+
+  adminReady = true;
+  showAdminPanel();
 }
 
 // Open with ?selftest to print how similar the reference images are to each other.

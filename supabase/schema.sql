@@ -4,8 +4,10 @@
 --
 -- Security model, on purpose very light:
 --  * Players log in with just a name. Anyone can create a player and save finds.
---  * Only admins (people who log in with email + password and are listed in
---    the admins table) can add invaders and upload reference photos.
+--  * Only admins can add invaders and upload reference photos. In the app you
+--    log in with the name "admin" and a password; behind the scenes that signs
+--    in to the Supabase user admin@invader-hunt.local, which is listed in the
+--    admins table below. Create that user under Authentication › Users.
 
 -- ---------- tables ----------
 
@@ -143,3 +145,8 @@ select v.invader_id, v.url from (values
   ('BRL_01', 'refs/inv-05.svg')
 ) as v(invader_id, url)
 where not exists (select 1 from public.refs r where r.invader_id = v.invader_id and r.url = v.url);
+
+-- ---------- the in-app "admin" login ----------
+-- Matches adminEmail in config.js. The address never receives mail.
+insert into public.admins (email) values ('admin@invader-hunt.local')
+on conflict (email) do nothing;
