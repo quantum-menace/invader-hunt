@@ -285,10 +285,11 @@ function el(tag, className, text) {
   return e;
 }
 
+// Cities that have invaders: the order from data.json first, then any others.
 function cityList() {
   const cities = [...(data.cities || [])];
   for (const inv of data.invaders) if (!cities.includes(inv.city)) cities.push(inv.city);
-  return cities;
+  return cities.filter((c) => data.invaders.some((i) => i.city === c));
 }
 
 // Collection grouped by city, in the order given by data.cities.
@@ -472,7 +473,7 @@ function setupLocationPicker() {
   const mode = locMode();
   sel.value = [...sel.options].some((o) => o.value === mode) ? mode : 'real';
   if (sel.value !== mode) setLocMode(sel.value);
-  sel.addEventListener('change', () => setLocMode(sel.value));
+  sel.onchange = () => setLocMode(sel.value); // property, so rebuilding does not stack listeners
   paintGps();
 }
 
@@ -656,6 +657,37 @@ function setupAdmin() {
       await setInvaderLocation(inv, p.coords.latitude, p.coords.longitude, ` (your GPS, ±${Math.round(p.coords.accuracy)} m)`);
     } catch (e) {
       adminMsg('Could not move it: ' + e.message);
+    }
+  });
+
+  // Two taps: the first one says what will be lost, the second deletes.
+  $('inv-delete').addEventListener('click', async () => {
+    const btn = $('inv-delete');
+    const inv = data.invaders.find((i) => i.id === $('admin-inv').value);
+    if (!inv) return;
+    if (btn.dataset.armed !== inv.id) {
+      btn.dataset.armed = inv.id;
+      btn.textContent = `Tap again to delete ${inv.name}`;
+      const n = inv.refs.length;
+      adminMsg(`This deletes ${inv.name}, its ${n} reference photo${n === 1 ? '' : 's'}, and every player's find of it. It cannot be undone.`);
+      setTimeout(() => { delete btn.dataset.armed; btn.textContent = 'Delete this invader'; }, 4000);
+      return;
+    }
+    delete btn.dataset.armed;
+    btn.textContent = 'Delete this invader';
+    try {
+      adminMsg('Deleting…');
+      await Cloud.deleteInvader(inv);
+      data.invaders = data.invaders.filter((i) => i.id !== inv.id);
+      delete refs[inv.id];
+      if (found[inv.id]) { delete found[inv.id]; saveFound(); }
+      render();
+      setupLocationPicker();
+      fillAdminInvaders();
+      renderBoard();
+      adminMsg(`Deleted ${inv.name}.`);
+    } catch (e) {
+      adminMsg('Could not delete: ' + e.message);
     }
   });
 

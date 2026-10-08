@@ -118,6 +118,14 @@ const Cloud = (() => {
       return { row, url: refUrl(row) };
     },
 
+    // Removes an invader. Its photo rows and everyone's finds of it go with it
+    // (the database cascades); the uploaded photo files are removed here.
+    async deleteInvader(inv) {
+      const paths = (inv.refRows || []).map((r) => r.storage_path).filter(Boolean);
+      if (paths.length) await run(sb.storage.from(BUCKET).remove(paths));
+      await run(sb.from('invaders').delete().eq('id', inv.id));
+    },
+
     // Removes a reference photo: its database row, and the file if it was uploaded.
     async deleteRef(row) {
       await run(sb.from('refs').delete().eq('id', row.id));
