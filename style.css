@@ -130,7 +130,13 @@ input:focus, select:focus { outline: 2px solid var(--cyan); outline-offset: 0; }
 .tool-title { font: 10px/1.4 var(--pixel); color: var(--warn); margin: 0 0 10px; }
 #admin-tool { border-top: 2px dashed var(--line); padding-top: 14px; }
 .ref-strip { display: flex; gap: 6px; flex-wrap: wrap; }
-.ref-strip img { width: 64px; height: 64px; object-fit: cover; border: 2px solid var(--line); }
+.ref-thumb { position: relative; }
+.ref-thumb img { width: 72px; height: 72px; object-fit: cover; border: 2px solid var(--line); display: block; }
+.ref-del {
+  position: absolute; top: 2px; right: 2px; font-size: 8px; padding: 4px 5px; line-height: 1;
+  border: 2px solid var(--accent); color: var(--accent); background: #000; box-shadow: none;
+}
+.ref-del.armed { background: var(--accent); color: #fff; }
 
 /* leaderboard */
 .board { list-style: none; counter-reset: rank; margin: 0; padding: 0; }

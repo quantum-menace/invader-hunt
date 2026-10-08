@@ -498,6 +498,34 @@ async function realPosition() {
 
 function adminMsg(text) { $('admin-msg').textContent = text; }
 
+// Reads "48.1374, 11.5755", "48.1374 11.5755", or a Google Maps link
+// (…/@48.1374,11.5755,17z or …?q=48.1374,11.5755). Returns null if invalid.
+function parseCoords(text) {
+  const s = (text || '').trim();
+  const m = s.match(/@(-?\d+(?:\.\d+)?),\s*(-?\d+(?:\.\d+)?)/)
+    || s.match(/[?&](?:q|query|ll)=(-?\d+(?:\.\d+)?),\s*(-?\d+(?:\.\d+)?)/)
+    || s.match(/^(-?\d+(?:\.\d+)?)\s*[,;\s]\s*(-?\d+(?:\.\d+)?)$/);
+  if (!m) return null;
+  const lat = parseFloat(m[1]), lng = parseFloat(m[2]);
+  if (!(Math.abs(lat) <= 90 && Math.abs(lng) <= 180)) return null;
+  return { lat, lng };
+}
+
+const fmtCoords = (lat, lng) => `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+
+function showCoords(inv) {
+  $('inv-coords').value = fmtCoords(inv.lat, inv.lng);
+  $('coords-map').href = `https://www.google.com/maps/search/?api=1&query=${inv.lat},${inv.lng}`;
+}
+
+async function setInvaderLocation(inv, lat, lng, how) {
+  await Cloud.moveInvader(inv.id, lat, lng);
+  inv.lat = lat;
+  inv.lng = lng;
+  showCoords(inv);
+  adminMsg(`${inv.name} now sits at ${fmtCoords(lat, lng)}${how}.`);
+}
+
 function fillAdminInvaders(selectId) {
   const sel = $('admin-inv');
   sel.innerHTML = '';
@@ -525,12 +553,43 @@ function showAdminInvader() {
   strip.innerHTML = '';
   const inv = data.invaders.find((i) => i.id === id);
   if (!inv) return;
-  for (const src of inv.refs) {
+  showCoords(inv);
+  inv.refs.forEach((src, i) => {
+    const fig = el('div', 'ref-thumb');
     const img = el('img');
     if (!/^(data|blob):/.test(src)) img.crossOrigin = 'anonymous';
     img.src = src;
-    img.alt = inv.name;
-    strip.append(img);
+    img.alt = `${inv.name} reference ${i + 1}`;
+    const del = el('button', 'ref-del', '✕');
+    del.type = 'button';
+    del.title = 'Delete this photo';
+    del.addEventListener('click', () => deleteRefPhoto(inv, i, del));
+    fig.append(img, del);
+    strip.append(fig);
+  });
+}
+
+// First tap arms the button, a second tap within 3 seconds deletes the photo.
+async function deleteRefPhoto(inv, i, btn) {
+  if (!btn.classList.contains('armed')) {
+    btn.classList.add('armed');
+    btn.textContent = 'Delete?';
+    setTimeout(() => { btn.classList.remove('armed'); btn.textContent = '✕'; }, 3000);
+    return;
+  }
+  const row = inv.refRows && inv.refRows[i];
+  if (!row) return adminMsg('This photo is built into the app and cannot be deleted here.');
+  try {
+    adminMsg('Deleting…');
+    await Cloud.deleteRef(row);
+    inv.refs.splice(i, 1);
+    inv.refRows.splice(i, 1);
+    if (refs[inv.id]) refs[inv.id].splice(i, 1);
+    fillAdminInvaders(inv.id);
+    render();
+    adminMsg(`Deleted. ${inv.name} has ${inv.refs.length} reference photo${inv.refs.length === 1 ? '' : 's'} left.`);
+  } catch (e) {
+    adminMsg('Could not delete: ' + e.message);
   }
 }
 
@@ -559,17 +618,30 @@ function setupAdmin() {
     if (!/^[A-Z0-9_\-]{2,20}$/.test(name)) return adminMsg('Use 2 to 20 letters, digits or _ for the name.');
     if (!city) return adminMsg('Enter a city.');
     if (data.invaders.some((i) => i.id === name)) return adminMsg(name + ' already exists.');
+    const typed = $('new-coords').value.trim();
+    const coords = typed ? parseCoords(typed) : null;
+    if (typed && !coords) return adminMsg('Could not read those coordinates. Use "48.13740, 11.57550".');
     try {
-      adminMsg('Getting your position…');
-      const p = await realPosition();
-      const inv = { id: name, name, city, lat: p.coords.latitude, lng: p.coords.longitude, points };
+      let lat, lng, where;
+      if (coords) {
+        ({ lat, lng } = coords);
+        where = fmtCoords(lat, lng);
+      } else {
+        adminMsg('Getting your position…');
+        const p = await realPosition();
+        lat = p.coords.latitude;
+        lng = p.coords.longitude;
+        where = `your position (±${Math.round(p.coords.accuracy)} m)`;
+      }
+      const inv = { id: name, name, city, lat, lng, points };
       await Cloud.createInvader(inv);
-      data.invaders.push({ ...inv, refs: [] });
+      data.invaders.push({ ...inv, refs: [], refRows: [] });
       refs[name] = [];
+      $('new-coords').value = '';
       render();
       setupLocationPicker();
       fillAdminInvaders(name);
-      adminMsg(`Created ${name} at ±${Math.round(p.coords.accuracy)} m. Now add reference photos.`);
+      adminMsg(`Created ${name} at ${where}. Now add reference photos.`);
     } catch (e) {
       adminMsg('Could not create it: ' + e.message);
     }
@@ -581,12 +653,21 @@ function setupAdmin() {
     try {
       adminMsg('Getting your position…');
       const p = await realPosition();
-      await Cloud.moveInvader(inv.id, p.coords.latitude, p.coords.longitude);
-      inv.lat = p.coords.latitude;
-      inv.lng = p.coords.longitude;
-      adminMsg(`${inv.name} now sits at your position (±${Math.round(p.coords.accuracy)} m).`);
+      await setInvaderLocation(inv, p.coords.latitude, p.coords.longitude, ` (your GPS, ±${Math.round(p.coords.accuracy)} m)`);
     } catch (e) {
       adminMsg('Could not move it: ' + e.message);
+    }
+  });
+
+  $('coords-save').addEventListener('click', async () => {
+    const inv = data.invaders.find((i) => i.id === $('admin-inv').value);
+    if (!inv) return;
+    const c = parseCoords($('inv-coords').value);
+    if (!c) return adminMsg('Could not read those coordinates. Use "48.13740, 11.57550".');
+    try {
+      await setInvaderLocation(inv, c.lat, c.lng, '');
+    } catch (e) {
+      adminMsg('Could not save: ' + e.message);
     }
   });
 
@@ -599,8 +680,9 @@ function setupAdmin() {
     try {
       adminMsg('Uploading…');
       const blob = await shrinkPhoto(file);
-      const url = await Cloud.uploadRef(inv.id, blob);
+      const { row, url } = await Cloud.uploadRef(inv.id, blob);
       inv.refs.push(url);
+      (inv.refRows = inv.refRows || []).push(row);
       // Use the new photo for matching right away on this phone.
       (refs[inv.id] = refs[inv.id] || []).push(await matcher.fingerprintRef(await Matcher.loadImage(URL.createObjectURL(blob))));
       fillAdminInvaders(inv.id);
@@ -621,7 +703,8 @@ function selfTest() {
   const w = data.colorWeight ?? 0.4;
   const lines = ['        ' + ids.map((i) => i.padStart(7)).join('')];
   for (const a of ids) {
-    lines.push(a.padEnd(8) + ids.map((b) => matcher.score([refs[a][0]], refs[b], w).score.toFixed(2).padStart(7)).join(''));
+    const first = refs[a].find(Boolean);
+    lines.push(a.padEnd(8) + ids.map((b) => (first ? matcher.score([first], refs[b], w).score : 0).toFixed(2).padStart(7)).join(''));
   }
   const out = $('selftest');
   out.hidden = false;
@@ -665,10 +748,13 @@ async function init() {
   console.info('[ih] model loaded, backend', tf.getBackend());
   for (const inv of data.invaders) {
     refs[inv.id] = [];
+    // Keep one entry per photo (null if it failed) so the list lines up with
+    // inv.refs and a deleted photo can be removed by position.
     for (const src of inv.refs) {
       try {
         refs[inv.id].push(await matcher.fingerprintRef(await Matcher.loadImage(src)));
       } catch (e) {
+        refs[inv.id].push(null);
         console.warn('[ih] skipped reference photo', src, e);
       }
     }

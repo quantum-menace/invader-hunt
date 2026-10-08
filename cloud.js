@@ -31,10 +31,14 @@ const Cloud = (() => {
         run(sb.from('invaders').select('*').order('id')),
         run(sb.from('refs').select('*').order('id')),
       ]);
-      return invaders.map((inv) => ({
-        id: inv.id, name: inv.name, city: inv.city, lat: inv.lat, lng: inv.lng, points: inv.points,
-        refs: refs.filter((r) => r.invader_id === inv.id).map(refUrl),
-      }));
+      return invaders.map((inv) => {
+        const rows = refs.filter((r) => r.invader_id === inv.id);
+        return {
+          id: inv.id, name: inv.name, city: inv.city, lat: inv.lat, lng: inv.lng, points: inv.points,
+          refs: rows.map(refUrl),   // photo addresses, used for matching and display
+          refRows: rows,            // same order; needed to delete a photo
+        };
+      });
     },
 
     // ---------- players ----------
@@ -106,12 +110,18 @@ const Cloud = (() => {
       await run(sb.from('invaders').update({ lat, lng }).eq('id', id));
     },
 
-    // Uploads a reference photo and returns its public URL.
+    // Uploads a reference photo; returns { row, url }.
     async uploadRef(invaderId, blob) {
       const path = `${invaderId}/${Date.now()}.jpg`;
       await run(sb.storage.from(BUCKET).upload(path, blob, { contentType: 'image/jpeg' }));
-      await run(sb.from('refs').insert({ invader_id: invaderId, storage_path: path }));
-      return refUrl({ storage_path: path });
+      const row = await run(sb.from('refs').insert({ invader_id: invaderId, storage_path: path }).select().single());
+      return { row, url: refUrl(row) };
+    },
+
+    // Removes a reference photo: its database row, and the file if it was uploaded.
+    async deleteRef(row) {
+      await run(sb.from('refs').delete().eq('id', row.id));
+      if (row.storage_path) await run(sb.storage.from(BUCKET).remove([row.storage_path]));
     },
   };
 })();

@@ -89,14 +89,22 @@
           <input id="new-city" placeholder="City" list="city-list" maxlength="30">
           <datalist id="city-list"></datalist>
           <label>Points <input id="new-points" type="number" min="0" step="10" value="10"></label>
-          <button type="button" id="new-create">Create it here, at my GPS position</button>
+          <input id="new-coords" placeholder="Coordinates, e.g. 48.13740, 11.57550 (empty = my GPS)" inputmode="decimal">
+          <button type="button" id="new-create">Create invader</button>
         </div>
         <div id="admin-existing" class="stack">
           <label class="button-like" for="ref-camera">Add reference photo</label>
           <input id="ref-camera" type="file" accept="image/*" capture="environment" hidden>
           <div id="admin-refs" class="ref-strip"></div>
-          <button type="button" id="admin-move">Move this invader to my GPS position</button>
+          <label for="inv-coords">Location</label>
+          <input id="inv-coords" placeholder="48.13740, 11.57550" inputmode="decimal">
+          <div class="row">
+            <button type="button" id="coords-save">Save coordinates</button>
+            <button type="button" id="admin-move">Use my GPS</button>
+          </div>
+          <a id="coords-map" class="hint" target="_blank" rel="noopener">Show on map</a>
         </div>
+        <p class="hint">Coordinates: in Google Maps, long-press (phone) or right-click (computer) a spot and copy the numbers, or paste a Google Maps link.</p>
         <p id="admin-msg" class="hint"></p>
       </div>
       <p class="hint">Add invaders and reference photos. Take 3 to 5 reference shots per invader from different angles and distances.</p>

@@ -127,6 +127,7 @@ const Matcher = (() => {
     function score(shots, refs, colorWeight) {
       let best = { score: -1, emb: 0, color: 0 };
       for (const r of refs) {
+        if (!r) continue; // a reference photo that failed to load
         for (const s of shots) {
           const e = cosine(r.emb, s.emb), c = colorSim(r.color, s.color);
           const v = (1 - colorWeight) * e + colorWeight * c;
