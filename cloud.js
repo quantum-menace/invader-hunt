@@ -106,6 +106,9 @@ const Cloud = (() => {
     async createInvader(inv) {
       await run(sb.from('invaders').insert(inv));
     },
+    async setPoints(id, points) {
+      await run(sb.from('invaders').update({ points }).eq('id', id));
+    },
     async moveInvader(id, lat, lng) {
       await run(sb.from('invaders').update({ lat, lng }).eq('id', id));
     },

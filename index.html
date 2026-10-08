@@ -96,6 +96,10 @@
           <label class="button-like" for="ref-camera">Add reference photo</label>
           <input id="ref-camera" type="file" accept="image/*" capture="environment" hidden>
           <div id="admin-refs" class="ref-strip"></div>
+          <div class="row">
+            <label>Points <input id="inv-points" type="number" min="0" step="10"></label>
+            <button type="button" id="points-save">Save points</button>
+          </div>
           <label for="inv-coords">Location</label>
           <input id="inv-coords" placeholder="48.13740, 11.57550" inputmode="decimal">
           <div class="row">

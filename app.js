@@ -555,6 +555,7 @@ function showAdminInvader() {
   const inv = data.invaders.find((i) => i.id === id);
   if (!inv) return;
   showCoords(inv);
+  $('inv-points').value = inv.points || 0;
   inv.refs.forEach((src, i) => {
     // A card with the photo on the front and a red cross on the back.
     const card = el('button', 'ref-card');
@@ -698,6 +699,22 @@ function setupAdmin() {
       adminMsg(`Deleted ${inv.name}.`);
     } catch (e) {
       adminMsg('Could not delete: ' + e.message);
+    }
+  });
+
+  $('points-save').addEventListener('click', async () => {
+    const inv = data.invaders.find((i) => i.id === $('admin-inv').value);
+    if (!inv) return;
+    const points = parseInt($('inv-points').value, 10);
+    if (!(points >= 0)) return adminMsg('Points must be 0 or more.');
+    try {
+      await Cloud.setPoints(inv.id, points);
+      inv.points = points;
+      render();
+      renderBoard();
+      adminMsg(`${inv.name} is now worth ${points} points. Leaderboard totals update for everyone.`);
+    } catch (e) {
+      adminMsg('Could not save points: ' + e.message);
     }
   });
 
