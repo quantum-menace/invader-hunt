@@ -17,6 +17,8 @@
   color-scheme: dark;
 }
 * { box-sizing: border-box; border-radius: 0 !important; }
+/* Hidden must win over layout rules like .stack { display: flex }. */
+[hidden] { display: none !important; }
 body {
   margin: 0; background: var(--bg); color: var(--text);
   font: 21px/1.15 var(--body);
@@ -130,13 +132,30 @@ input:focus, select:focus { outline: 2px solid var(--cyan); outline-offset: 0; }
 .tool-title { font: 10px/1.4 var(--pixel); color: var(--warn); margin: 0 0 10px; }
 #admin-tool { border-top: 2px dashed var(--line); padding-top: 14px; }
 .ref-strip { display: flex; gap: 6px; flex-wrap: wrap; }
-.ref-thumb { position: relative; }
-.ref-thumb img { width: 72px; height: 72px; object-fit: cover; border: 2px solid var(--line); display: block; }
-.ref-del {
-  position: absolute; top: 2px; right: 2px; font-size: 8px; padding: 4px 5px; line-height: 1;
-  border: 2px solid var(--accent); color: var(--accent); background: #000; box-shadow: none;
+/* reference photo cards: tap once to flip to a red cross, tap again to delete */
+.ref-card {
+  width: 76px; height: 76px; padding: 0; border: 0; background: none; box-shadow: none;
+  perspective: 400px; -webkit-tap-highlight-color: transparent;
 }
-.ref-del.armed { background: var(--accent); color: #fff; }
+.ref-card:active { transform: none; box-shadow: none; }
+.ref-inner {
+  position: relative; display: block; width: 100%; height: 100%;
+  transform-style: preserve-3d; transition: transform 0.35s steps(6);
+}
+.ref-card.flipped .ref-inner { transform: rotateY(180deg); }
+.ref-front, .ref-back {
+  position: absolute; inset: 0; width: 100%; height: 100%;
+  -webkit-backface-visibility: hidden; backface-visibility: hidden;
+  border: 2px solid var(--line);
+}
+.ref-front { object-fit: cover; display: block; }
+.ref-back {
+  transform: rotateY(180deg); background: var(--accent); border-color: #fff;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; color: #fff;
+}
+.ref-x { font: 22px/1 var(--pixel); }
+.ref-label { font: 7px/1 var(--pixel); }
+.ref-card:disabled { opacity: 0.5; }
 
 /* leaderboard */
 .board { list-style: none; counter-reset: rank; margin: 0; padding: 0; }

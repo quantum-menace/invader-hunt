@@ -556,30 +556,39 @@ function showAdminInvader() {
   if (!inv) return;
   showCoords(inv);
   inv.refs.forEach((src, i) => {
-    const fig = el('div', 'ref-thumb');
-    const img = el('img');
+    // A card with the photo on the front and a red cross on the back.
+    const card = el('button', 'ref-card');
+    card.type = 'button';
+    card.setAttribute('aria-label', `Reference photo ${i + 1}: tap to delete`);
+    const inner = el('span', 'ref-inner');
+    const img = el('img', 'ref-front');
     if (!/^(data|blob):/.test(src)) img.crossOrigin = 'anonymous';
     img.src = src;
-    img.alt = `${inv.name} reference ${i + 1}`;
-    const del = el('button', 'ref-del', '✕');
-    del.type = 'button';
-    del.title = 'Delete this photo';
-    del.addEventListener('click', () => deleteRefPhoto(inv, i, del));
-    fig.append(img, del);
-    strip.append(fig);
+    img.alt = '';
+    const back = el('span', 'ref-back');
+    back.append(el('span', 'ref-x', '✕'), el('span', 'ref-label', 'Delete'));
+    inner.append(img, back);
+    card.append(inner);
+    card.addEventListener('click', () => deleteRefPhoto(inv, i, card));
+    strip.append(card);
   });
 }
 
-// First tap arms the button, a second tap within 3 seconds deletes the photo.
-async function deleteRefPhoto(inv, i, btn) {
-  if (!btn.classList.contains('armed')) {
-    btn.classList.add('armed');
-    btn.textContent = 'Delete?';
-    setTimeout(() => { btn.classList.remove('armed'); btn.textContent = '✕'; }, 3000);
+// First tap flips the photo to show a red cross; a second tap deletes it.
+// It flips back by itself after 4 seconds or when another photo is tapped.
+async function deleteRefPhoto(inv, i, card) {
+  if (!card.classList.contains('flipped')) {
+    for (const other of document.querySelectorAll('.ref-card.flipped')) other.classList.remove('flipped');
+    card.classList.add('flipped');
+    clearTimeout(card._unflip);
+    card._unflip = setTimeout(() => card.classList.remove('flipped'), 4000);
     return;
   }
+  clearTimeout(card._unflip);
+  card.disabled = true;
   const row = inv.refRows && inv.refRows[i];
-  if (!row) return adminMsg('This photo is built into the app and cannot be deleted here.');
+  const restore = () => { card.disabled = false; card.classList.remove('flipped'); };
+  if (!row) { restore(); return adminMsg('This photo is built into the app and cannot be deleted here.'); }
   try {
     adminMsg('Deleting…');
     await Cloud.deleteRef(row);
@@ -590,6 +599,7 @@ async function deleteRefPhoto(inv, i, btn) {
     render();
     adminMsg(`Deleted. ${inv.name} has ${inv.refs.length} reference photo${inv.refs.length === 1 ? '' : 's'} left.`);
   } catch (e) {
+    restore();
     adminMsg('Could not delete: ' + e.message);
   }
 }
